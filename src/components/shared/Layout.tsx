@@ -79,7 +79,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTa
               <Scissors className="w-4 h-4 stroke-[2.5]" />
             </div>
             <div>
-              <span className="font-bold tracking-tight text-slate-900 block leading-tight">Barbería Pro</span>
+              <span className="font-bold tracking-tight text-slate-900 block leading-tight">Barbería "Josue"</span>
               <span className="text-[10px] text-indigo-600 font-medium tracking-widest uppercase">Management OS</span>
             </div>
           </div>
@@ -172,7 +172,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTa
             <Scissors className="w-4 h-4" />
           </div>
           <div>
-            <span className="font-bold text-xs text-slate-900 block">Barbería Pro</span>
+            <span className="font-bold text-xs text-slate-900 block">Barbería "Josue"</span>
             <span className="text-[9px] text-indigo-600 font-semibold tracking-wider uppercase">OS</span>
           </div>
         </div>

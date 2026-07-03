@@ -26,7 +26,7 @@ import {
 } from '../types';
 
 class MockDatabase {
-  private storageKey = 'barberia_pro_db_v1';
+  private storageKey = 'barberia_josue_db_v1';
 
   // State
   private tenants: Tenant[] = [];
@@ -112,8 +112,8 @@ class MockDatabase {
     this.tenants = [
       {
         id: tenantId,
-        name: 'Barbería Elite Pro',
-        subdomain: 'elite',
+        name: 'Barbería "Josue"',
+        subdomain: 'josue',
         logoUrl: '',
         createdAt: new Date('2026-01-01').toISOString(),
       },
@@ -121,13 +121,12 @@ class MockDatabase {
 
     // --- 2. Branches ---
     const branch1Id = 'branch-coyoacan';
-    const branch2Id = 'branch-condesa';
     this.branches = [
       {
         id: branch1Id,
         tenantId,
-        name: 'Sucursal Central (Coyoacán)',
-        address: 'Calle Higuera 12, Coyoacán, CDMX',
+        name: 'Sucursal Central (Kenko)',
+        address: 'Calle Higuera 12, Central (Kenko), CDMX',
         phone: '55-1234-5678',
         openingHours: {
           monday: { open: '09:00', close: '20:00', active: true },
@@ -139,23 +138,6 @@ class MockDatabase {
           sunday: { open: '10:00', close: '16:00', active: true },
         },
         createdAt: new Date('2026-01-01').toISOString(),
-      },
-      {
-        id: branch2Id,
-        tenantId,
-        name: 'Sucursal Condesa',
-        address: 'Av. Tamaulipas 84, Condesa, CDMX',
-        phone: '55-8765-4321',
-        openingHours: {
-          monday: { open: '10:00', close: '21:00', active: true },
-          tuesday: { open: '10:00', close: '21:00', active: true },
-          wednesday: { open: '10:00', close: '21:00', active: true },
-          thursday: { open: '10:00', close: '22:00', active: true },
-          friday: { open: '10:00', close: '22:00', active: true },
-          saturday: { open: '09:00', close: '20:00', active: true },
-          sunday: { open: '11:00', close: '17:00', active: true },
-        },
-        createdAt: new Date('2026-02-15').toISOString(),
       },
     ];
 

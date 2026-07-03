@@ -1,5 +1,5 @@
 {
-  "name": "Barbería Pro",
+  "name": "Barbería \"Josue\"",
   "description": "Plataforma profesional para la administración de reservas, inventario, ventas, caja y clientes de una barbería moderna.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
