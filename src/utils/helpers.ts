@@ -4,12 +4,12 @@
  */
 
 /**
- * Formatea un número como moneda mexicana (MXN).
+ * Formatea un número como moneda boliviana (BOB).
  */
 export function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat('es-MX', {
+  return new Intl.NumberFormat('es-BO', {
     style: 'currency',
-    currency: 'MXN',
+    currency: 'BOB',
   }).format(amount);
 }
 
@@ -26,7 +26,7 @@ export function formatDateLegible(dateStr: string): string {
     date = new Date(dateStr);
   }
   
-  return new Intl.DateTimeFormat('es-MX', {
+  return new Intl.DateTimeFormat('es-BO', {
     weekday: 'long',
     day: 'numeric',
     month: 'long',

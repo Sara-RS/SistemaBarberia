@@ -37,6 +37,31 @@ export const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTa
   const { currentRole, setCurrentRole, selectedBranchId, setSelectedBranchId, branches, activeSession } = useApp();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [currentTime, setCurrentTime] = useState<string>('');
+
+  React.useEffect(() => {
+    const updateTime = () => {
+      const now = new Date();
+      const formatter = new Intl.DateTimeFormat('es-BO', {
+        timeZone: 'America/La_Paz',
+        weekday: 'short',
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: true,
+      });
+      // Hacer la primera letra de la fecha en mayúscula
+      const formatted = formatter.format(now);
+      setCurrentTime(formatted.charAt(0).toUpperCase() + formatted.slice(1));
+    };
+
+    updateTime();
+    const interval = setInterval(updateTime, 1000);
+    return () => clearInterval(interval);
+  }, []);
 
   // Determinar los ítems del menú según el rol activo
   const adminMenuItems = [
@@ -276,7 +301,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTa
 
             <div className="text-xs text-gray-400 flex items-center gap-1.5 font-medium">
               <Clock className="w-3.5 h-3.5 text-amber-500" />
-              <span>Julio 2, 2026 (7:54 PM UTC)</span>
+              <span>{currentTime} (Bolivia)</span>
             </div>
 
             {/* Campana de Notificaciones */}

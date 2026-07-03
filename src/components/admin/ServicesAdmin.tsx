@@ -181,7 +181,7 @@ export const ServicesAdmin: React.FC = () => {
 
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
-                    <label className="text-slate-500 font-bold uppercase text-[9px]">Precio ($ MXN)</label>
+                    <label className="text-slate-500 font-bold uppercase text-[9px]">Precio (Bs.)</label>
                     <input
                       type="number"
                       value={price}

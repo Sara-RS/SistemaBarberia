@@ -174,7 +174,7 @@ export const SalesPOS: React.FC = () => {
           // FORMULARIO APERTURA CAJA
           <div className="flex flex-col sm:flex-row items-end gap-4 bg-[#121422]/20 p-4 rounded-xl border border-dashed border-gray-800">
             <div className="space-y-1 w-full sm:max-w-xs text-xs">
-              <label className="text-gray-400 font-bold uppercase tracking-wider text-[9px]">Fondo de Apertura ($ MXN)</label>
+              <label className="text-gray-400 font-bold uppercase tracking-wider text-[9px]">Fondo de Apertura (Bs.)</label>
               <input
                 type="number"
                 value={openingBalance}
