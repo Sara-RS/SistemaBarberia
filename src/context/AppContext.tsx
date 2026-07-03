@@ -51,11 +51,13 @@ interface AppContextProps {
   addCashMovement: (type: 'income' | 'expense', amount: number, reason: string) => void;
   addProduct: (prod: Omit<Product, 'id' | 'createdAt'>) => void;
   updateProduct: (id: string, updates: Partial<Product>) => void;
+  deleteProduct: (id: string) => void;
   adjustProductStock: (productId: string, qty: number, reason: string) => void;
   addService: (ser: Omit<Service, 'id' | 'createdAt'>) => void;
   updateService: (id: string, updates: Partial<Service>) => void;
   addEmployee: (emp: Omit<Employee, 'id' | 'createdAt'>) => void;
   updateEmployee: (id: string, updates: Partial<Employee>) => void;
+  deleteEmployee: (id: string) => void;
 }
 
 const AppContext = createContext<AppContextProps | undefined>(undefined);
@@ -175,6 +177,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     refreshAll();
   };
 
+  const deleteProduct = (id: string) => {
+    mockDb.deleteProduct(id);
+    refreshAll();
+  };
+
   const adjustProductStock = (productId: string, qty: number, reason: string) => {
     mockDb.adjustStock(selectedBranchId, productId, qty, reason, 'emp-carlos');
     refreshAll();
@@ -197,6 +204,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const updateEmployee = (id: string, updates: Partial<Employee>) => {
     mockDb.updateEmployee(id, updates);
+    refreshAll();
+  };
+
+  const deleteEmployee = (id: string) => {
+    mockDb.deleteEmployee(id);
     refreshAll();
   };
 
@@ -230,11 +242,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         addCashMovement,
         addProduct,
         updateProduct,
+        deleteProduct,
         adjustProductStock,
         addService,
         updateService,
         addEmployee,
         updateEmployee,
+        deleteEmployee,
       }}
     >
       {children}

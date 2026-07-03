@@ -6,19 +6,28 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { formatCurrency } from '../../utils/helpers';
-import { Package, Plus, AlertTriangle, ArrowDown, ArrowUp, Truck, Tag, RefreshCw } from 'lucide-react';
+import { Package, Plus, AlertTriangle, ArrowDown, ArrowUp, Truck, Tag, RefreshCw, Edit, Trash2, X } from 'lucide-react';
+import { Product } from '../../types';
 
 export const InventoryAdmin: React.FC = () => {
   const {
     products,
     providers,
     addProduct,
+    updateProduct,
+    deleteProduct,
     adjustProductStock,
     selectedBranchId,
+    currentRole,
   } = useApp();
 
-  // ADD NEW PRODUCT FORM STATE
-  const [showAddForm, setShowAddForm] = useState(false);
+  const isCurrentRoleAdmin = currentRole === 'admin';
+
+  // CRUD state
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+
+  // Form states
   const [name, setName] = useState('');
   const [sku, setSku] = useState('');
   const [category, setCategory] = useState('');
@@ -34,38 +43,80 @@ export const InventoryAdmin: React.FC = () => {
 
   const branchProducts = products.filter(p => p.branchId === selectedBranchId);
 
-  const handleCreateProduct = (e: React.FormEvent) => {
+  const openAddModal = () => {
+    if (!isCurrentRoleAdmin) return;
+    if (providers.length === 0) {
+      alert('Debes registrar al menos un proveedor antes de agregar insumos.');
+      return;
+    }
+    setEditingProduct(null);
+    setName('');
+    setSku('');
+    setCategory('');
+    setPrice(0);
+    setStock(10);
+    setMinStock(3);
+    setSelectedProviderId(providers[0].id);
+    setIsModalOpen(true);
+  };
+
+  const openEditModal = (prod: Product) => {
+    if (!isCurrentRoleAdmin) return;
+    setEditingProduct(prod);
+    setName(prod.name);
+    setSku(prod.sku);
+    setCategory(prod.category);
+    setPrice(prod.price);
+    setStock(prod.stock);
+    setMinStock(prod.minStock);
+    setSelectedProviderId(prod.providerId);
+    setIsModalOpen(true);
+  };
+
+  const handleDeleteProduct = (id: string) => {
+    if (!isCurrentRoleAdmin) return;
+    if (window.confirm('¿Estás seguro de que deseas eliminar este producto del inventario?')) {
+      deleteProduct(id);
+    }
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!isCurrentRoleAdmin) return;
     if (!name || !sku || !category || !selectedProviderId) {
       alert('Todos los campos con asterisco son obligatorios.');
       return;
     }
 
     try {
-      addProduct({
-        tenantId: 'tenant-1',
-        branchId: selectedBranchId,
-        providerId: selectedProviderId,
-        name,
-        sku,
-        category,
-        price,
-        stock,
-        minStock,
-        active: true,
-      });
+      if (editingProduct) {
+        updateProduct(editingProduct.id, {
+          name,
+          sku,
+          category,
+          price,
+          stock,
+          minStock,
+          providerId: selectedProviderId,
+        });
+      } else {
+        addProduct({
+          tenantId: 'tenant-1',
+          branchId: selectedBranchId,
+          providerId: selectedProviderId,
+          name,
+          sku,
+          category,
+          price,
+          stock,
+          minStock,
+          active: true,
+        });
+      }
 
-      // Reset
-      setName('');
-      setSku('');
-      setCategory('');
-      setPrice(0);
-      setStock(10);
-      setMinStock(3);
-      setSelectedProviderId('');
-      setShowAddForm(false);
+      setIsModalOpen(false);
     } catch (err: any) {
-      alert(err.message || 'Error al agregar producto.');
+      alert(err.message || 'Error al guardar producto.');
     }
   };
 
@@ -85,20 +136,15 @@ export const InventoryAdmin: React.FC = () => {
           <span className="text-[10px] text-slate-500 block">Monitoreo de stock, mermas, órdenes de suministro y proveedores.</span>
         </div>
 
-        <button
-          onClick={() => {
-            if (providers.length === 0) {
-              alert('Debes registrar al menos un proveedor antes de agregar insumos.');
-              return;
-            }
-            setSelectedProviderId(providers[0].id);
-            setShowAddForm(true);
-          }}
-          className="w-full sm:w-auto px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-lg flex items-center justify-center gap-2 transition-all cursor-pointer shadow-md shadow-indigo-600/10"
-        >
-          <Plus className="w-4 h-4" />
-          <span>Agregar Producto</span>
-        </button>
+        {isCurrentRoleAdmin && (
+          <button
+            onClick={openAddModal}
+            className="w-full sm:w-auto px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-lg flex items-center justify-center gap-2 transition-all cursor-pointer shadow-md shadow-indigo-600/10"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Agregar Producto</span>
+          </button>
+        )}
       </div>
 
       {/* BODY INVENTARIO CONTENEDORES */}
@@ -106,8 +152,9 @@ export const InventoryAdmin: React.FC = () => {
         
         {/* TABLA PRINCIPAL DE INVENTARIOS */}
         <div className="lg:col-span-2 bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm text-xs">
-          <div className="p-4 border-b border-slate-200 bg-slate-50/50">
+          <div className="p-4 border-b border-slate-200 bg-slate-50/50 flex justify-between items-center">
             <h3 className="font-extrabold text-slate-800 text-xs uppercase tracking-wider">Existencias en Almacén</h3>
+            <span className="text-[10px] text-slate-400 font-semibold">{isCurrentRoleAdmin ? 'Modo: Administrador (CRUD disponible)' : 'Modo: Vista de Lectura'}</span>
           </div>
 
           <div className="overflow-x-auto">
@@ -118,7 +165,7 @@ export const InventoryAdmin: React.FC = () => {
                   <th className="p-3.5">SKU</th>
                   <th className="p-3.5 text-center">Stock Real</th>
                   <th className="p-3.5 text-right">Inversión</th>
-                  <th className="p-3.5 pr-5 text-right">Ajustes</th>
+                  <th className="p-3.5 pr-5 text-right">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-150 text-slate-650">
@@ -164,12 +211,35 @@ export const InventoryAdmin: React.FC = () => {
                           {formatCurrency(p.price)}
                         </td>
                         <td className="p-3.5 pr-5 text-right">
-                          <button
-                            onClick={() => setSelectedProdId(p.id)}
-                            className="px-2.5 py-1 bg-white hover:border-indigo-500 text-slate-500 hover:text-indigo-600 rounded-lg border border-slate-200 text-[10px] font-bold transition-all cursor-pointer"
-                          >
-                            Ajustar
-                          </button>
+                          <div className="flex items-center justify-end gap-1.5">
+                            {isCurrentRoleAdmin ? (
+                              <>
+                                <button
+                                  onClick={() => setSelectedProdId(p.id)}
+                                  className="px-2 py-1 bg-white hover:border-indigo-500 text-indigo-600 rounded-lg border border-slate-200 text-[10px] font-bold transition-all cursor-pointer"
+                                  title="Ajustar Stock"
+                                >
+                                  Stock
+                                </button>
+                                <button
+                                  onClick={() => openEditModal(p)}
+                                  className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-slate-50 border border-transparent hover:border-slate-100 rounded transition-all cursor-pointer"
+                                  title="Editar Propiedades"
+                                >
+                                  <Edit className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteProduct(p.id)}
+                                  className="p-1 text-slate-400 hover:text-rose-600 hover:bg-slate-50 border border-transparent hover:border-slate-100 rounded transition-all cursor-pointer"
+                                  title="Eliminar Producto"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </>
+                            ) : (
+                              <span className="text-[10px] text-slate-400 italic">No disponible</span>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     );
@@ -210,7 +280,7 @@ export const InventoryAdmin: React.FC = () => {
       </div>
 
       {/* MODAL AJUSTAR STOCK RÁPIDO */}
-      {selectedProdId && (
+      {selectedProdId && isCurrentRoleAdmin && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white border border-slate-200 rounded-2xl max-w-sm w-full overflow-hidden shadow-2xl relative text-xs text-slate-600">
             <div className="h-1 bg-indigo-600 w-full" />
@@ -269,18 +339,20 @@ export const InventoryAdmin: React.FC = () => {
         </div>
       )}
 
-      {/* MODAL REGISTRAR NUEVO INSUMO */}
-      {showAddForm && (
+      {/* CRUD MODAL - REGISTRAR O EDITAR INSUMO */}
+      {isModalOpen && isCurrentRoleAdmin && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <form onSubmit={handleCreateProduct} className="bg-white border border-slate-200 rounded-2xl max-w-md w-full overflow-hidden shadow-2xl relative text-xs">
+          <form onSubmit={handleSubmit} className="bg-white border border-slate-200 rounded-2xl max-w-md w-full overflow-hidden shadow-2xl relative text-xs">
             <div className="h-1 bg-indigo-600 w-full" />
             
             <div className="p-6 space-y-4">
               <div className="flex justify-between items-center pb-2 border-b border-slate-100">
-                <h3 className="font-bold text-slate-900 text-base">Registrar Nuevo Insumo</h3>
+                <h3 className="font-bold text-slate-900 text-base">
+                  {editingProduct ? 'Editar Insumo de Almacén' : 'Registrar Nuevo Insumo'}
+                </h3>
                 <button
                   type="button"
-                  onClick={() => setShowAddForm(false)}
+                  onClick={() => setIsModalOpen(false)}
                   className="p-1 text-slate-400 hover:text-slate-800 rounded transition-all cursor-pointer text-sm font-bold"
                 >
                   ✕
@@ -297,7 +369,7 @@ export const InventoryAdmin: React.FC = () => {
                       placeholder="Ej. Gel Fijador Oud"
                       value={name}
                       onChange={(e) => setName(e.target.value)}
-                      className="w-full bg-white border border-slate-200 rounded-lg p-2.5 text-slate-805 focus:outline-none focus:border-indigo-500"
+                      className="w-full bg-white border border-slate-200 rounded-lg p-2.5 text-slate-800 focus:outline-none focus:border-indigo-500"
                     />
                   </div>
                   
@@ -343,9 +415,11 @@ export const InventoryAdmin: React.FC = () => {
 
                 <div className="grid grid-cols-3 gap-3">
                   <div className="space-y-1">
-                    <label className="text-slate-500 font-bold uppercase text-[9px]">Precio (Bs.)</label>
+                    <label className="text-slate-500 font-bold uppercase text-[9px]">Precio (Bs.) *</label>
                     <input
                       type="number"
+                      required
+                      min="0"
                       value={price}
                       onChange={(e) => setPrice(Number(e.target.value))}
                       className="w-full bg-white border border-slate-200 rounded-lg p-2.5 text-slate-800 focus:outline-none font-mono text-center"
@@ -353,9 +427,11 @@ export const InventoryAdmin: React.FC = () => {
                   </div>
 
                   <div className="space-y-1">
-                    <label className="text-slate-500 font-bold uppercase text-[9px]">Stock Inicial</label>
+                    <label className="text-slate-500 font-bold uppercase text-[9px]">Stock Real *</label>
                     <input
                       type="number"
+                      required
+                      min="0"
                       value={stock}
                       onChange={(e) => setStock(Number(e.target.value))}
                       className="w-full bg-white border border-slate-200 rounded-lg p-2.5 text-slate-800 focus:outline-none font-mono text-center"
@@ -363,9 +439,11 @@ export const InventoryAdmin: React.FC = () => {
                   </div>
 
                   <div className="space-y-1">
-                    <label className="text-slate-500 font-bold uppercase text-[9px]">Stock Mínimo</label>
+                    <label className="text-slate-500 font-bold uppercase text-[9px]">Stock Mínimo *</label>
                     <input
                       type="number"
+                      required
+                      min="0"
                       value={minStock}
                       onChange={(e) => setMinStock(Number(e.target.value))}
                       className="w-full bg-white border border-slate-200 rounded-lg p-2.5 text-slate-800 focus:outline-none font-mono text-center"
@@ -374,12 +452,21 @@ export const InventoryAdmin: React.FC = () => {
                 </div>
               </div>
 
-              <button
-                type="submit"
-                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-2.5 rounded-lg font-bold tracking-wide transition-all cursor-pointer text-xs mt-4 shadow-md shadow-indigo-600/10"
-              >
-                Registrar Producto en Almacén
-              </button>
+              <div className="flex gap-3 border-t border-slate-100 pt-4 mt-6">
+                <button
+                  type="button"
+                  onClick={() => setIsModalOpen(false)}
+                  className="flex-1 px-4 py-2 border border-slate-200 hover:bg-slate-50 text-slate-750 rounded-lg text-xs font-bold transition-colors cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white py-2 rounded-lg font-bold transition-all cursor-pointer text-xs shadow-md shadow-indigo-600/10"
+                >
+                  {editingProduct ? 'Guardar Cambios' : 'Registrar Insumo'}
+                </button>
+              </div>
             </div>
           </form>
         </div>

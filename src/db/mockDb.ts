@@ -771,6 +771,11 @@ class MockDatabase {
     return this.products[idx];
   }
 
+  public deleteProduct(id: string): void {
+    this.products = this.products.filter(p => p.id !== id);
+    this.save();
+  }
+
   public adjustStock(branchId: string, productId: string, qty: number, reason: string, employeeId: string) {
     const prodIdx = this.products.findIndex(p => p.id === productId);
     if (prodIdx === -1) throw new Error('Producto no encontrado');
@@ -970,6 +975,11 @@ class MockDatabase {
     this.employees[idx] = { ...this.employees[idx], ...updates } as Employee;
     this.save();
     return this.employees[idx];
+  }
+
+  public deleteEmployee(id: string): void {
+    this.employees = this.employees.filter(e => e.id !== id);
+    this.save();
   }
 }
 
