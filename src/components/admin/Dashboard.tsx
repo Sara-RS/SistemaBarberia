@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { useApp } from '../../context/AppContext';
 import { formatCurrency } from '../../utils/helpers';
 import {
@@ -11,13 +11,10 @@ import {
   Calendar,
   Users,
   Package,
-  Sparkles,
   AlertTriangle,
   Award,
   Clock,
   ArrowRight,
-  BrainCircuit,
-  Loader,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -35,11 +32,6 @@ import {
 
 export const Dashboard: React.FC = () => {
   const { appointments, services, products, sales, clients, selectedBranchId } = useApp();
-
-  // AI Advice states
-  const [advice, setAdvice] = useState('');
-  const [loadingAdvice, setLoadingAdvice] = useState(false);
-  const [adviceError, setAdviceError] = useState('');
 
   // 1. COMPUTE KEY PERFORMANCE INDICATORS (KPIs)
   const todayStr = '2026-07-02'; // Matching mock date
@@ -75,49 +67,13 @@ export const Dashboard: React.FC = () => {
     { name: 'Mateo', cortes: 9, color: '#8B5CF6' },
   ];
 
-  const handleFetchAIAdvice = async () => {
-    setLoadingAdvice(true);
-    setAdviceError('');
-    setAdvice('');
-
-    try {
-      const metricsPayload = {
-        todaySales,
-        todayAppointments: todayAppointments.length,
-        activeClients: activeClientsCount,
-        criticalStockCount,
-        recentAppointments: todayAppointments.slice(0, 3).map(a => {
-          const service = services.find(s => s.id === a.serviceId);
-          return { time: a.startTime, serviceName: service?.name || 'Servicio' };
-        }),
-      };
-
-      const res = await fetch('/api/ai/advise', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ metrics: metricsPayload }),
-      });
-
-      const data = await res.json();
-      if (res.ok) {
-        setAdvice(data.advice);
-      } else {
-        throw new Error(data.error || 'No se pudo generar el consejo.');
-      }
-    } catch (err: any) {
-      setAdviceError(err.message || 'Error al conectar con el servidor.');
-    } finally {
-      setLoadingAdvice(false);
-    }
-  };
-
   return (
     <div className="space-y-6 animate-fadeIn">
       {/* HEADER SECTION */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h1 className="text-2xl font-black text-slate-950 tracking-tight">Dashboard Ejecutivo</h1>
-          <p className="text-xs text-slate-500 mt-1">Métricas clave, comportamiento de sucursal y consultoría estratégica de IA.</p>
+          <p className="text-xs text-slate-500 mt-1">Métricas clave, comportamiento de sucursal y alertas de inventario.</p>
         </div>
       </div>
 
@@ -201,101 +157,35 @@ export const Dashboard: React.FC = () => {
         </div>
       </div>
 
-      {/* GRID DE IA Y ALERTAS DE STOCK */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* WIDGET IA CONSULTOR */}
-        <div className="lg:col-span-2 p-5 bg-white border border-slate-200 rounded-xl space-y-4 shadow-sm relative overflow-hidden">
-          <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-50 rounded-full blur-3xl opacity-60 pointer-events-none" />
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 relative z-10">
-            <div className="flex gap-2.5 items-center">
-              <div className="w-9 h-9 rounded-lg bg-indigo-50 flex items-center justify-center text-indigo-600 shadow-sm">
-                <BrainCircuit className="w-5 h-5 stroke-[2]" />
-              </div>
-              <div>
-                <h3 className="font-bold text-slate-900 text-sm">Consultor Estratégico de IA</h3>
-                <span className="text-[10px] text-indigo-600 font-extrabold tracking-wider uppercase block">Powered by Gemini AI</span>
-              </div>
-            </div>
-            <button
-              onClick={handleFetchAIAdvice}
-              disabled={loadingAdvice}
-              className="px-3.5 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-bold hover:bg-indigo-700 cursor-pointer flex items-center gap-1.5 shrink-0 transition-all disabled:opacity-50 shadow-md shadow-indigo-600/10"
-            >
-              {loadingAdvice ? (
-                <>
-                  <Loader className="w-3.5 h-3.5 animate-spin" />
-                  <span>Analizando...</span>
-                </>
-              ) : (
-                <>
-                  <Sparkles className="w-3.5 h-3.5 fill-white" />
-                  <span>Obtener Análisis</span>
-                </>
-              )}
-            </button>
-          </div>
-
-          {/* ÁREA DE CONTENIDO DE CONSEJO */}
-          <div className="p-4 rounded-xl bg-slate-50 border border-slate-100 text-xs leading-relaxed text-slate-700 min-h-[140px] max-h-[300px] overflow-y-auto relative z-10">
-            {loadingAdvice ? (
-              <div className="h-28 flex flex-col items-center justify-center text-center gap-2">
-                <Loader className="w-6 h-6 text-indigo-600 animate-spin" />
-                <span className="text-slate-500 font-semibold">Gemini está analizando los ingresos, citas y almacenes...</span>
-              </div>
-            ) : advice ? (
-              <div className="prose prose-xs whitespace-pre-line max-w-none text-slate-700 font-medium">
-                {advice}
-              </div>
-            ) : adviceError ? (
-              <div className="text-center p-4 space-y-2 text-rose-600">
-                <AlertTriangle className="w-8 h-8 mx-auto stroke-[2]" />
-                <p className="font-bold">Error de Configuración</p>
-                <p className="text-[10px] text-slate-400">{adviceError}</p>
-                <p className="text-[10px] bg-rose-50 border border-rose-100 p-2.5 text-rose-700 rounded-lg max-w-sm mx-auto">
-                  💡 Tip: Puedes configurar tu API key de Gemini en el panel de Secrets de AI Studio.
-                </p>
-              </div>
-            ) : (
-              <div className="text-center py-8 text-slate-400 space-y-1.5">
-                <BrainCircuit className="w-8 h-8 text-slate-300 mx-auto" />
-                <p className="font-semibold text-slate-700">¿Listo para mejorar la rentabilidad?</p>
-                <p className="text-[10px] text-slate-500">Presiona el botón de arriba para analizar las ventas de hoy y obtener 3 consejos automatizados para tu barbería.</p>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* ALERTA DE STOCK CRÍTICO */}
-        <div className="p-5 bg-white border border-slate-200 rounded-xl space-y-4 shadow-sm">
+      {/* SECCIÓN DE ALERTA DE STOCK CRÍTICO */}
+      {criticalStockCount > 0 && (
+        <div className="p-5 bg-white border border-slate-200 rounded-xl space-y-4 shadow-sm animate-fadeIn">
           <div className="flex justify-between items-center pb-2 border-b border-slate-100">
-            <h3 className="font-bold text-slate-900 text-xs uppercase tracking-wider">Alertas de Stock</h3>
-            <span className="bg-rose-50 text-rose-600 text-[10px] px-2 py-0.5 rounded-full font-bold border border-rose-100">
-              {criticalStockCount} ítems
+            <h3 className="font-bold text-rose-600 text-xs uppercase tracking-wider flex items-center gap-1.5">
+              <AlertTriangle className="w-4 h-4 stroke-[2]" />
+              <span>Insumos con Stock Crítico</span>
+            </h3>
+            <span className="bg-rose-50 text-rose-600 text-[10px] px-2.5 py-0.5 rounded-full font-bold border border-rose-100">
+              {criticalStockCount} ítems en alerta
             </span>
           </div>
 
-          <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
-            {criticalProducts.length === 0 ? (
-              <div className="text-center py-10 text-xs text-slate-400">
-                ✅ Todo el inventario está completo y por encima del stock mínimo.
-              </div>
-            ) : (
-              criticalProducts.map(p => (
-                <div key={p.id} className="p-3 bg-slate-50 border border-slate-100 rounded-lg flex justify-between items-center">
-                  <div>
-                    <span className="font-semibold text-xs text-slate-800 block">{p.name}</span>
-                    <span className="text-[9px] text-slate-400 block">SKU: {p.sku}</span>
-                  </div>
-                  <div className="text-right">
-                    <span className="text-xs font-bold text-rose-600 block">{p.stock} pz</span>
-                    <span className="text-[9px] text-slate-400 block">mín: {p.minStock}</span>
-                  </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+            {criticalProducts.map(p => (
+              <div key={p.id} className="p-3 bg-rose-50/30 border border-rose-100 rounded-lg flex justify-between items-center hover:bg-rose-50/50 transition-colors">
+                <div>
+                  <span className="font-bold text-xs text-slate-800 block">{p.name}</span>
+                  <span className="text-[9px] text-slate-400 block font-mono">SKU: {p.sku}</span>
                 </div>
-              ))
-            )}
+                <div className="text-right">
+                  <span className="text-xs font-black text-rose-600 block font-mono">{p.stock} pz</span>
+                  <span className="text-[9px] text-slate-400 block font-mono">mín: {p.minStock}</span>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
-      </div>
+      )}
 
       {/* VISUALIZACIONES GRÁFICAS */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
