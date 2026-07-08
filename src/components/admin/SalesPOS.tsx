@@ -6,6 +6,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { formatCurrency } from '../../utils/helpers';
+import { mockDb } from '../../db/mockDb';
 import {
   DollarSign,
   Plus,
@@ -34,6 +35,8 @@ export const SalesPOS: React.FC = () => {
     addSale,
     selectedBranchId,
   } = useApp();
+
+  const movements = activeSession ? mockDb.getCashMovements(activeSession.id) : [];
 
   // CASH SESSION INPUTS
   const [openingBalance, setOpeningBalance] = useState<number>(1000);
@@ -249,10 +252,10 @@ export const SalesPOS: React.FC = () => {
             <div className="space-y-2">
               <span className="font-bold text-[10px] text-gray-500 uppercase tracking-wider block">Bitácora de Sesión</span>
               <div className="max-h-24 overflow-y-auto space-y-1.5 pr-1 font-mono text-[10px] text-gray-400">
-                {activeSession.movements.length === 0 ? (
+                {movements.length === 0 ? (
                   <span className="text-gray-600 italic block py-4 text-center">Sin ingresos ni egresos extra en caja.</span>
                 ) : (
-                  activeSession.movements.map((m, idx) => (
+                  movements.map((m, idx) => (
                     <div key={idx} className="flex justify-between border-b border-gray-900 pb-1">
                       <span className="text-gray-500">{m.reason}</span>
                       <span className={m.type === 'income' ? 'text-emerald-400' : 'text-rose-400'}>

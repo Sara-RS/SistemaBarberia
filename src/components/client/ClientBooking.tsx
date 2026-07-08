@@ -21,6 +21,7 @@ import {
   Mail,
   Smile,
   MapPin,
+  MessageSquare,
 } from 'lucide-react';
 
 export const ClientBooking: React.FC = () => {
@@ -409,7 +410,7 @@ export const ClientBooking: React.FC = () => {
                   <input
                     type="tel"
                     required
-                    placeholder="Ej. 55-1234-5678"
+                    placeholder="Ej. 71523456"
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
                     className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-4 py-2.5 text-sm text-slate-800 focus:outline-none focus:border-indigo-500"
@@ -550,6 +551,17 @@ export const ClientBooking: React.FC = () => {
             </div>
 
             <div className="flex flex-col sm:flex-row gap-3 justify-center pt-2">
+              <a
+                href={`https://api.whatsapp.com/send?phone=${phone.replace(/[^0-9]/g, '').startsWith('591') ? phone.replace(/[^0-9]/g, '') : '591' + phone.replace(/[^0-9]/g, '')}&text=${encodeURIComponent(
+                  `¡Hola, ${fullName}! Te saludamos de Barbería Josué 🇧🇴\n\nConfirmamos tu cita agendada:\n✂️ *Servicio:* ${activeService?.name}\n💈 *Barbero:* ${activeEmployee?.fullName}\n📅 *Fecha:* ${formatDateLegible(createdApt.date)}\n⏰ *Hora:* ${createdApt.startTime} a ${createdApt.endTime}\n\n📍 *Sucursal:* ${activeBranch?.name}\n🏠 *Dirección:* ${activeBranch?.address}\n\n¡Gracias por tu preferencia! Te esperamos.`
+                )}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg flex items-center justify-center gap-2 transition-all shadow-md shadow-emerald-600/10 cursor-pointer"
+              >
+                <MessageSquare className="w-4 h-4 stroke-[2]" />
+                <span>Enviar Aviso por WhatsApp</span>
+              </a>
               <button
                 onClick={() => {
                   // Reset form fields

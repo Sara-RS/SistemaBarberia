@@ -125,9 +125,9 @@ class MockDatabase {
       {
         id: branch1Id,
         tenantId,
-        name: 'Sucursal Central (Kenko)',
-        address: 'Calle Higuera 12, Central (Kenko), CDMX',
-        phone: '55-1234-5678',
+        name: 'Sucursal Central (La Paz)',
+        address: 'Av. 16 de Julio, El Prado, La Paz, Bolivia',
+        phone: '71523456',
         openingHours: {
           monday: { open: '09:00', close: '20:00', active: true },
           tuesday: { open: '09:00', close: '20:00', active: true },
@@ -143,10 +143,10 @@ class MockDatabase {
 
     // --- 3. Users ---
     this.users = [
-      { id: 'user-carlos', email: 'carlos@barberia.com', role: 'admin', fullName: 'Carlos Gómez', phone: '55-1111-2222', createdAt: '2026-01-01' },
-      { id: 'user-luis', email: 'luis@barberia.com', role: 'barber', fullName: 'Luis Morales', phone: '55-3333-4444', createdAt: '2026-01-10' },
-      { id: 'user-sofia', email: 'sofia@barberia.com', role: 'recep', fullName: 'Sofía Martínez', phone: '55-5555-6666', createdAt: '2026-01-15' },
-      { id: 'user-mateo', email: 'mateo@barberia.com', role: 'barber', fullName: 'Mateo Herrera', phone: '55-7777-8888', createdAt: '2026-02-01' },
+      { id: 'user-carlos', email: 'carlos@barberia.com', role: 'admin', fullName: 'Carlos Gómez', phone: '71512222', createdAt: '2026-01-01' },
+      { id: 'user-luis', email: 'luis@barberia.com', role: 'barber', fullName: 'Luis Morales', phone: '72534444', createdAt: '2026-01-10' },
+      { id: 'user-sofia', email: 'sofia@barberia.com', role: 'recep', fullName: 'Sofía Martínez', phone: '73556666', createdAt: '2026-01-15' },
+      { id: 'user-mateo', email: 'mateo@barberia.com', role: 'barber', fullName: 'Mateo Herrera', phone: '76578888', createdAt: '2026-02-01' },
     ];
 
     // --- 4. Employees (linked to Branch Coyoacán) ---
@@ -156,7 +156,7 @@ class MockDatabase {
         branchId: branch1Id,
         userId: 'user-carlos',
         fullName: 'Carlos Gómez',
-        phone: '55-1111-2222',
+        phone: '71512222',
         email: 'carlos@barberia.com',
         role: 'admin',
         specialties: ['Corte', 'Barba', 'Afeitado Clásico'],
@@ -179,7 +179,7 @@ class MockDatabase {
         branchId: branch1Id,
         userId: 'user-luis',
         fullName: 'Luis Morales',
-        phone: '55-3333-4444',
+        phone: '72534444',
         email: 'luis@barberia.com',
         role: 'barber',
         specialties: ['Corte', 'Diseño de Barba', 'Color'],
@@ -202,7 +202,7 @@ class MockDatabase {
         branchId: branch1Id,
         userId: 'user-mateo',
         fullName: 'Mateo Herrera',
-        phone: '55-7777-8888',
+        phone: '76578888',
         email: 'mateo@barberia.com',
         role: 'barber',
         specialties: ['Corte', 'Barba', 'Tinte'],
@@ -225,7 +225,7 @@ class MockDatabase {
         branchId: branch1Id,
         userId: 'user-sofia',
         fullName: 'Sofía Martínez',
-        phone: '55-5555-6666',
+        phone: '73556666',
         email: 'sofia@barberia.com',
         role: 'recep',
         specialties: [],
@@ -303,10 +303,10 @@ class MockDatabase {
 
     // --- 6. Clients ---
     this.clients = [
-      { id: 'cli-juan', tenantId, fullName: 'Juan Pérez', phone: '55-4444-5555', email: 'juan.perez@example.com', isRegistered: true, createdAt: '2026-01-02' },
-      { id: 'cli-andres', tenantId, fullName: 'Andrés López', phone: '55-6666-7777', email: 'andres.l@example.com', isRegistered: false, createdAt: '2026-01-12' },
-      { id: 'cli-ricardo', tenantId, fullName: 'Ricardo Silva', phone: '55-8888-9999', email: 'ricardo.silva@example.com', isRegistered: true, createdAt: '2026-01-20' },
-      { id: 'cli-miguel', tenantId, fullName: 'Miguel Ángel', phone: '55-9999-0000', email: 'miguel.angel@example.com', isRegistered: false, createdAt: '2026-02-10' },
+      { id: 'cli-juan', tenantId, fullName: 'Juan Pérez', phone: '70545555', email: 'juan.perez@example.com', isRegistered: true, createdAt: '2026-01-02' },
+      { id: 'cli-andres', tenantId, fullName: 'Andrés López', phone: '70667777', email: 'andres.l@example.com', isRegistered: false, createdAt: '2026-01-12' },
+      { id: 'cli-ricardo', tenantId, fullName: 'Ricardo Silva', phone: '70889999', email: 'ricardo.silva@example.com', isRegistered: true, createdAt: '2026-01-20' },
+      { id: 'cli-miguel', tenantId, fullName: 'Miguel Ángel', phone: '70990000', email: 'miguel.angel@example.com', isRegistered: false, createdAt: '2026-02-10' },
     ];
 
     // --- 7. Appointments (Dynamic relative to today) ---
@@ -394,7 +394,7 @@ class MockDatabase {
         id: 'q-1',
         branchId: branch1Id,
         fullName: 'Roberto Mendoza',
-        phone: '55-4433-2211',
+        phone: '70432211',
         email: 'roberto@example.com',
         employeeId: 'emp-luis', // Esperando a Luis
         serviceId: 'ser-corte',
@@ -407,7 +407,7 @@ class MockDatabase {
         id: 'q-2',
         branchId: branch1Id,
         fullName: 'Alejandro Ruiz',
-        phone: '55-9988-7766',
+        phone: '70987766',
         employeeId: undefined, // Cualquiera disponible
         serviceId: 'ser-barba',
         status: 'waiting',
@@ -424,21 +424,21 @@ class MockDatabase {
       {
         id: provider1Id,
         tenantId,
-        name: 'Distribuidora Barber-Supply CDMX',
+        name: 'Distribuidora Barber-Supply La Paz',
         contactName: 'Ing. Eduardo Pérez',
-        phone: '55-9000-1111',
-        email: 'ventas@barbersupply.com',
-        address: 'Bodega 14, Central de Abastos, Iztapalapa, CDMX',
+        phone: '79501111',
+        email: 'ventas@barbersupply.bo',
+        address: 'Av. Franco Valle, El Alto, La Paz, Bolivia',
         createdAt: '2026-01-05',
       },
       {
         id: provider2Id,
         tenantId,
-        name: 'Cosméticos BarberStyle S.A.',
+        name: 'Cosméticos BarberStyle Bolivia',
         contactName: 'Lic. Laura Juárez',
-        phone: '55-4000-2222',
-        email: 'pedidos@barberstyle.com',
-        address: 'Av. Paseo de la Reforma 250, Juárez, CDMX',
+        phone: '78402222',
+        email: 'pedidos@barberstyle.bo',
+        address: 'Calle Sagárnaga 120, Zona Central, La Paz, Bolivia',
         createdAt: '2026-01-10',
       },
     ];

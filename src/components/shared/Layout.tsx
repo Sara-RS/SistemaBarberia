@@ -67,7 +67,6 @@ export const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTa
   const adminMenuItems = [
     { id: 'dashboard', name: 'Dashboard', icon: TrendingUp },
     { id: 'calendar', name: 'Agenda', icon: Calendar },
-    { id: 'queue', name: 'Walk-Ins', icon: Clock },
     { id: 'pos', name: 'Caja & POS', icon: DollarSign },
     { id: 'inventory', name: 'Inventario', icon: Package },
     { id: 'services', name: 'Servicios', icon: Scissors },

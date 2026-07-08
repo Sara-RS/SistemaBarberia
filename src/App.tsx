@@ -15,7 +15,6 @@ import { BranchInfo } from './components/client/BranchInfo';
 // Administrative Views
 import { Dashboard } from './components/admin/Dashboard';
 import { CalendarView } from './components/admin/CalendarView';
-import { QueueList } from './components/admin/QueueList';
 import { SalesPOS } from './components/admin/SalesPOS';
 import { InventoryAdmin } from './components/admin/InventoryAdmin';
 import { ServicesAdmin } from './components/admin/ServicesAdmin';
@@ -40,9 +39,8 @@ const WorkspaceSwitcher: React.FC = () => {
       case 'dashboard':
         return <Dashboard />;
       case 'calendar':
-        return <CalendarView />;
       case 'queue':
-        return <QueueList />;
+        return <CalendarView />;
       case 'pos':
         return <SalesPOS />;
       case 'inventory':
