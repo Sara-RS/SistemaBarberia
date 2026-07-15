@@ -19,6 +19,7 @@ import { SalesPOS } from './components/admin/SalesPOS';
 import { InventoryAdmin } from './components/admin/InventoryAdmin';
 import { ServicesAdmin } from './components/admin/ServicesAdmin';
 import { StaffAdmin } from './components/admin/StaffAdmin';
+import { ClientsAdmin } from './components/admin/ClientsAdmin';
 
 const WorkspaceSwitcher: React.FC = () => {
   // Por default iniciamos en el Dashboard administrativo (el rol inicial es 'admin')
@@ -49,6 +50,8 @@ const WorkspaceSwitcher: React.FC = () => {
         return <ServicesAdmin />;
       case 'staff':
         return <StaffAdmin />;
+      case 'clients':
+        return <ClientsAdmin />;
 
       default:
         return <Dashboard />;

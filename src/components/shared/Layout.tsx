@@ -71,6 +71,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTa
     { id: 'inventory', name: 'Inventario', icon: Package },
     { id: 'services', name: 'Servicios', icon: Scissors },
     { id: 'staff', name: 'Barberos', icon: Users },
+    { id: 'clients', name: 'Clientes', icon: UserCheck },
   ];
 
   const clientMenuItems = [
