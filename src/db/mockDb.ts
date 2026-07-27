@@ -4,6 +4,7 @@
  */
 
 import {
+  CompanyInfo,
   Tenant,
   Branch,
   User,
@@ -24,11 +25,25 @@ import {
   AppointmentStatus,
   QueueStatus,
 } from '../types';
+import { getTodayStr, getOffsetDateStr } from '../utils/helpers';
 
 class MockDatabase {
   private storageKey = 'barberia_josue_db_v1';
 
   // State
+  private companyInfo: CompanyInfo = {
+    id: 'tenant-1',
+    name: 'Barbería "Josué"',
+    slogan: 'Estilo, Corte & Tradición de Caballero',
+    nitRuc: '1029384029',
+    address: 'Av. 16 de Julio #1420, El Prado, La Paz, Bolivia',
+    phone: '71523456',
+    email: 'contacto@barberiajosue.bo',
+    logoUrl: '',
+    receiptFooterMsg: '¡Gracias por su preferencia en Barbería "Josué"! Vuelva pronto. Válido para reclamos dentro de las 24 hrs.',
+    currencySymbol: 'Bs.',
+    defaultCommission: 35,
+  };
   private tenants: Tenant[] = [];
   private branches: Branch[] = [];
   private users: User[] = [];
@@ -55,25 +70,41 @@ class MockDatabase {
     if (data) {
       try {
         const parsed = JSON.parse(data);
-        this.tenants = parsed.tenants || [];
-        this.branches = parsed.branches || [];
-        this.users = parsed.users || [];
-        this.employees = parsed.employees || [];
-        this.services = parsed.services || [];
-        this.clients = parsed.clients || [];
-        this.appointments = parsed.appointments || [];
-        this.queueItems = parsed.queueItems || [];
-        this.providers = parsed.providers || [];
-        this.products = parsed.products || [];
-        this.inventoryTransactions = parsed.inventoryTransactions || [];
-        this.purchases = parsed.purchases || [];
-        this.sales = parsed.sales || [];
-        this.saleItems = parsed.saleItems || [];
-        this.cashSessions = parsed.cashSessions || [];
-        this.cashMovements = parsed.cashMovements || [];
+        if (parsed.companyInfo || parsed.informacionEmpresa) {
+          this.companyInfo = { ...this.companyInfo, ...(parsed.companyInfo || parsed.informacionEmpresa) };
+        }
+        this.tenants = parsed.tenants || parsed.empresas || [];
+        this.branches = parsed.branches || parsed.sucursales || [];
+        this.users = parsed.users || parsed.usuarios || [];
+        this.employees = parsed.employees || parsed.empleados || [];
+        this.services = parsed.services || parsed.servicios || [];
+        this.clients = parsed.clients || parsed.clientes || [];
+        this.appointments = parsed.appointments || parsed.citas || [];
+        this.queueItems = parsed.queueItems || parsed.turnosEspera || [];
+        this.providers = parsed.providers || parsed.proveedores || [];
+        this.products = parsed.products || parsed.productos || [];
+        this.inventoryTransactions = parsed.inventoryTransactions || parsed.movimientosInventario || [];
+        this.purchases = parsed.purchases || parsed.compras || [];
+        this.sales = parsed.sales || parsed.ventas || [];
+        this.saleItems = parsed.saleItems || parsed.detallesVenta || [];
+        this.cashSessions = parsed.cashSessions || parsed.sesionesCaja || [];
+        this.cashMovements = parsed.cashMovements || parsed.movimientosCaja || [];
+
+        // Migración automática de fechas: Si no hay citas para hoy, adaptar las citas de prueba a la fecha presente
+        const todayStr = getTodayStr();
+        const hasTodayApt = this.appointments.some(a => a.date === todayStr);
+        if (!hasTodayApt && this.appointments.length > 0) {
+          this.appointments = this.appointments.map(a => {
+            if (a.date === '2026-07-02' || !a.date) {
+              return { ...a, date: todayStr };
+            }
+            return a;
+          });
+          this.save();
+        }
         return;
       } catch (e) {
-        console.error('Failed to parse mock DB, re-initializing seed...', e);
+        console.error('Error al cargar la Base de Datos simulada, reiniciando datos...', e);
       }
     }
     this.seed();
@@ -81,6 +112,27 @@ class MockDatabase {
 
   public save() {
     const data = {
+      // Tablas en Español
+      informacionEmpresa: this.companyInfo,
+      empresas: this.tenants,
+      sucursales: this.branches,
+      usuarios: this.users,
+      empleados: this.employees,
+      servicios: this.services,
+      clientes: this.clients,
+      citas: this.appointments,
+      turnosEspera: this.queueItems,
+      proveedores: this.providers,
+      productos: this.products,
+      movimientosInventario: this.inventoryTransactions,
+      compras: this.purchases,
+      ventas: this.sales,
+      detallesVenta: this.saleItems,
+      sesionesCaja: this.cashSessions,
+      movimientosCaja: this.cashMovements,
+
+      // Mapeo legacy
+      companyInfo: this.companyInfo,
       tenants: this.tenants,
       branches: this.branches,
       users: this.users,
@@ -310,7 +362,8 @@ class MockDatabase {
     ];
 
     // --- 7. Appointments (Dynamic relative to today) ---
-    const todayStr = '2026-07-02'; // Matching our context timestamp: 2026-07-02
+    const todayStr = getTodayStr();
+    const yesterdayStr = getOffsetDateStr(-1);
     this.appointments = [
       {
         id: 'apt-1',
@@ -325,7 +378,7 @@ class MockDatabase {
         price: 35,
         notes: 'Cliente prefiere cera mate.',
         isWalkIn: false,
-        createdAt: '2026-07-01T15:00:00Z',
+        createdAt: `${todayStr}T09:00:00Z`,
       },
       {
         id: 'apt-2',
@@ -340,7 +393,7 @@ class MockDatabase {
         price: 50,
         notes: 'Viene por primera vez.',
         isWalkIn: false,
-        createdAt: '2026-07-01T16:30:00Z',
+        createdAt: `${todayStr}T09:30:00Z`,
       },
       {
         id: 'apt-3',
@@ -355,7 +408,7 @@ class MockDatabase {
         price: 20,
         notes: '',
         isWalkIn: false,
-        createdAt: '2026-07-02T08:00:00Z',
+        createdAt: `${todayStr}T08:00:00Z`,
       },
       {
         id: 'apt-4',
@@ -369,7 +422,7 @@ class MockDatabase {
         status: 'pending',
         price: 35,
         isWalkIn: false,
-        createdAt: '2026-07-02T10:00:00Z',
+        createdAt: `${todayStr}T10:00:00Z`,
       },
       // Un no-show previo
       {
@@ -378,13 +431,13 @@ class MockDatabase {
         clientId: 'cli-juan',
         employeeId: 'emp-mateo',
         serviceId: 'ser-barba',
-        date: '2026-07-01',
+        date: yesterdayStr,
         startTime: '11:00',
         endTime: '11:30',
         status: 'no-show',
         price: 20,
         isWalkIn: false,
-        createdAt: '2026-06-30T10:00:00Z',
+        createdAt: `${yesterdayStr}T10:00:00Z`,
       },
     ];
 
@@ -522,8 +575,22 @@ class MockDatabase {
         tip: 10,
         total: 225,
         paymentMethod: 'cash',
-        date: '2026-07-02T10:30:00Z',
-        createdAt: '2026-07-02T10:30:00Z',
+        date: `${todayStr}T10:30:00Z`,
+        createdAt: `${todayStr}T10:30:00Z`,
+      },
+      {
+        id: 'sal-2',
+        branchId: branch1Id,
+        clientId: 'cli-andres',
+        cashierId: 'emp-sofia',
+        subtotal: 180,
+        discount: 0,
+        tax: 0,
+        tip: 15,
+        total: 195,
+        paymentMethod: 'transfer',
+        date: `${yesterdayStr}T16:20:00Z`,
+        createdAt: `${yesterdayStr}T16:20:00Z`,
       },
     ];
 
@@ -536,7 +603,7 @@ class MockDatabase {
         quantity: 1,
         price: 35,
         employeeId: 'emp-luis',
-        commissionAmount: 14, // 35 * 40% = 14
+        commissionAmount: 14,
       },
       {
         id: 'sitem-2',
@@ -546,7 +613,7 @@ class MockDatabase {
         quantity: 1,
         price: 180,
         employeeId: 'emp-luis',
-        commissionAmount: 0, // Productos no comisionan directo por default o diferente
+        commissionAmount: 0,
       },
     ];
 
@@ -556,10 +623,10 @@ class MockDatabase {
         id: 'sess-today',
         branchId: branch1Id,
         employeeId: 'emp-sofia',
-        openedAt: '2026-07-02T08:30:00Z',
-        openingBalance: 200, // Fondo fijo
+        openedAt: `${todayStr}T08:30:00Z`,
+        openingBalance: 200,
         status: 'open',
-        createdAt: '2026-07-02T08:30:00Z',
+        createdAt: `${todayStr}T08:30:00Z`,
       },
     ];
 
@@ -571,7 +638,7 @@ class MockDatabase {
         type: 'income',
         amount: 225,
         reason: 'Ingreso por Venta POS #sal-1',
-        date: '2026-07-02T10:30:00Z',
+        date: `${todayStr}T10:30:00Z`,
       },
     ];
 
@@ -980,6 +1047,21 @@ class MockDatabase {
   public deleteEmployee(id: string): void {
     this.employees = this.employees.filter(e => e.id !== id);
     this.save();
+  }
+
+  // Company / Institution Settings
+  public getCompanyInfo(): CompanyInfo {
+    return { ...this.companyInfo };
+  }
+
+  public updateCompanyInfo(updates: Partial<CompanyInfo>): CompanyInfo {
+    this.companyInfo = { ...this.companyInfo, ...updates };
+    // Synchronize tenant name
+    if (updates.name && this.tenants.length > 0) {
+      this.tenants[0].name = updates.name;
+    }
+    this.save();
+    return { ...this.companyInfo };
   }
 }
 

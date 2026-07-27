@@ -5,7 +5,7 @@
 
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
-import { formatDateLegible, formatCurrency, calculateWaitTime } from '../../utils/helpers';
+import { formatDateLegible, formatCurrency, calculateWaitTime, getTodayStr } from '../../utils/helpers';
 import {
   Calendar,
   Clock,
@@ -40,7 +40,7 @@ export const CalendarView: React.FC = () => {
     updateQueueStatus,
   } = useApp();
 
-  const [currentDate, setCurrentDate] = useState('2026-07-02'); // Fecha predeterminada de la demo
+  const [currentDate, setCurrentDate] = useState(getTodayStr());
   const [selectedAptId, setSelectedAptId] = useState<string | null>(null);
   
   // Modal de Nueva Reserva de Cita
@@ -166,6 +166,7 @@ export const CalendarView: React.FC = () => {
           <button
             onClick={handlePrevDay}
             className="p-1.5 bg-slate-50 hover:bg-slate-100 rounded text-slate-500 hover:text-slate-800 border border-slate-200 transition-all cursor-pointer"
+            title="Día anterior"
           >
             <ChevronLeft className="w-4 h-4" />
           </button>
@@ -176,9 +177,18 @@ export const CalendarView: React.FC = () => {
           <button
             onClick={handleNextDay}
             className="p-1.5 bg-slate-50 hover:bg-slate-100 rounded text-slate-500 hover:text-slate-800 border border-slate-200 transition-all cursor-pointer"
+            title="Día siguiente"
           >
             <ChevronRight className="w-4 h-4" />
           </button>
+          {currentDate !== getTodayStr() && (
+            <button
+              onClick={() => setCurrentDate(getTodayStr())}
+              className="px-2.5 py-1 bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 text-xs font-extrabold rounded-lg border border-amber-300 transition-all cursor-pointer shadow-sm"
+            >
+              Hoy
+            </button>
+          )}
         </div>
 
         <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">

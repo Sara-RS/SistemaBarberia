@@ -5,7 +5,7 @@
 
 import React from 'react';
 import { useApp } from '../../context/AppContext';
-import { formatCurrency } from '../../utils/helpers';
+import { formatCurrency, getTodayStr, getOffsetDateStr, getDayNameShort } from '../../utils/helpers';
 import {
   TrendingUp,
   Calendar,
@@ -23,49 +23,94 @@ import {
   XAxis,
   YAxis,
   Tooltip,
-  BarChart,
-  Bar,
-  Cell,
   PieChart,
   Pie,
+  Cell,
 } from 'recharts';
 
 export const Dashboard: React.FC = () => {
-  const { appointments, services, products, sales, clients, selectedBranchId } = useApp();
+  const { appointments, services, products, sales, clients, employees, selectedBranchId, companyInfo } = useApp();
 
-  // 1. COMPUTE KEY PERFORMANCE INDICATORS (KPIs)
-  const todayStr = '2026-07-02'; // Matching mock date
-  const todaySales = sales.reduce((acc, s) => acc + s.total, 0);
-  const todayAppointments = appointments.filter(a => a.date === todayStr && a.status !== 'cancelled');
+  // 1. FECHA PRESENTE Y FILTRADO REAL
+  const todayStr = getTodayStr();
+  const yesterdayStr = getOffsetDateStr(-1);
+
+  // Ventas de hoy (de la lista real de ventas)
+  const todaySalesRecords = sales.filter(s => s.branchId === selectedBranchId && (s.date.startsWith(todayStr) || s.createdAt.startsWith(todayStr)));
+  const todaySalesTotalFromPOS = todaySalesRecords.reduce((acc, s) => acc + s.total, 0);
+
+  // Citas completadas de hoy
+  const todayCompletedApts = appointments.filter(a => a.branchId === selectedBranchId && a.date === todayStr && a.status === 'completed');
+  const todayAptsRevenue = todayCompletedApts.reduce((acc, a) => acc + a.price, 0);
+
+  // Total acumulado ventas de hoy
+  const todaySales = todaySalesTotalFromPOS > 0 ? todaySalesTotalFromPOS : todayAptsRevenue;
+
+  // Ventas de ayer para cálculo de crecimiento
+  const yesterdaySalesRecords = sales.filter(s => s.branchId === selectedBranchId && (s.date.startsWith(yesterdayStr) || s.createdAt.startsWith(yesterdayStr)));
+  const yesterdaySalesTotalFromPOS = yesterdaySalesRecords.reduce((acc, s) => acc + s.total, 0);
+  const yesterdayCompletedApts = appointments.filter(a => a.branchId === selectedBranchId && a.date === yesterdayStr && a.status === 'completed');
+  const yesterdaySales = yesterdaySalesTotalFromPOS > 0 ? yesterdaySalesTotalFromPOS : yesterdayCompletedApts.reduce((acc, a) => acc + a.price, 0);
+
+  // Porcentaje de crecimiento vs ayer
+  const salesGrowthVal = yesterdaySales > 0 
+    ? (((todaySales - yesterdaySales) / yesterdaySales) * 100).toFixed(1)
+    : todaySales > 0 ? '+100' : '0';
+
+  // Citas de hoy
+  const todayAppointments = appointments.filter(a => a.branchId === selectedBranchId && a.date === todayStr && a.status !== 'cancelled');
+  const completedTodayCount = appointments.filter(a => a.branchId === selectedBranchId && a.date === todayStr && a.status === 'completed').length;
+
+  // Clientes y Stock
   const activeClientsCount = clients.length;
-  
-  // Alerta de stock crítico (stock <= minStock)
-  const criticalProducts = products.filter(p => p.stock <= p.minStock);
+  const criticalProducts = products.filter(p => p.branchId === selectedBranchId && p.stock <= p.minStock);
   const criticalStockCount = criticalProducts.length;
 
-  // 2. ANALYTICS DATA GENERATION
-  const revenueHistory = [
-    { name: 'Lun', ingresos: 4200 },
-    { name: 'Mar', ingresos: 5800 },
-    { name: 'Mié', ingresos: 5100 },
-    { name: 'Jue', ingresos: 6500 },
-    { name: 'Vie', ingresos: 8900 },
-    { name: 'Sáb', ingresos: 12500 },
-    { name: 'Dom', ingresos: todaySales > 0 ? todaySales : 3500 },
-  ];
+  // 2. CURVA DE INGRESOS REALES DE LOS ÚLTIMOS 7 DÍAS
+  const revenueHistory = Array.from({ length: 7 }, (_, i) => {
+    const offset = 6 - i;
+    const dateStr = getOffsetDateStr(-offset);
+    const dayLabel = getDayNameShort(dateStr);
 
-  const serviceCategories = [
-    { name: 'Corte', value: 12, color: '#3B82F6' },
-    { name: 'Barba', value: 8, color: '#10B981' },
-    { name: 'Combo', value: 15, color: '#8B5CF6' },
-    { name: 'Facial', value: 4, color: '#F59E0B' },
-  ];
+    // Sumar ventas de ese día
+    const daySalesPos = sales
+      .filter(s => s.branchId === selectedBranchId && (s.date.startsWith(dateStr) || s.createdAt.startsWith(dateStr)))
+      .reduce((acc, s) => acc + s.total, 0);
 
-  const barberSales = [
-    { name: 'Carlos', cortes: 14, color: '#3B82F6' },
-    { name: 'Luis', cortes: 18, color: '#10B981' },
-    { name: 'Mateo', cortes: 9, color: '#8B5CF6' },
-  ];
+    const dayApts = appointments
+      .filter(a => a.branchId === selectedBranchId && a.date === dateStr && a.status === 'completed')
+      .reduce((acc, a) => acc + a.price, 0);
+
+    const dayTotal = daySalesPos > 0 ? daySalesPos : dayApts;
+
+    return {
+      name: dayLabel,
+      ingresos: dayTotal,
+      date: dateStr,
+    };
+  });
+
+  // 3. DISTRIBUCIÓN REAL POR CATEGORÍA DE SERVICIOS
+  const categoryColors: Record<string, string> = {
+    Corte: '#3B82F6',
+    Barba: '#10B981',
+    Combo: '#8B5CF6',
+    Insumo: '#F59E0B',
+    Facial: '#EC4899',
+  };
+
+  const serviceCategoriesMap = services.reduce((acc, srv) => {
+    const cat = srv.category || 'Otros';
+    const count = appointments.filter(a => a.branchId === selectedBranchId && a.serviceId === srv.id && a.status !== 'cancelled').length;
+    acc[cat] = (acc[cat] || 0) + count;
+    return acc;
+  }, {} as Record<string, number>);
+
+  const serviceCategories = Object.keys(serviceCategoriesMap).map(cat => ({
+    name: cat,
+    value: serviceCategoriesMap[cat] || 1,
+    color: categoryColors[cat] || '#6366F1',
+  }));
 
   return (
     <div className="space-y-6 animate-fadeIn">
@@ -73,19 +118,21 @@ export const Dashboard: React.FC = () => {
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h1 className="text-2xl font-black text-slate-950 tracking-tight">Dashboard Ejecutivo</h1>
-          <p className="text-xs text-slate-500 mt-1">Métricas clave, comportamiento de sucursal y alertas de inventario.</p>
+          <p className="text-xs text-slate-500 mt-1">
+            Métricas reales en tiempo real — Hoy: <strong className="text-slate-800">{todayStr}</strong>
+          </p>
         </div>
       </div>
 
       {/* KPI GRID */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* KPI 1 */}
+        {/* KPI 1: VENTAS HOY */}
         <div className="p-5 bg-white border border-slate-200 rounded-xl relative overflow-hidden group shadow-sm">
           <div className="flex justify-between items-start">
             <div>
               <span className="text-[10px] font-bold uppercase text-slate-400 tracking-wider">Ventas de Hoy</span>
-              <span className="text-2xl font-black text-slate-900 mt-1 block">
-                {formatCurrency(todaySales || 580)}
+              <span className="text-2xl font-black text-slate-900 mt-1 block font-mono">
+                {formatCurrency(todaySales)}
               </span>
             </div>
             <div className="w-9 h-9 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
@@ -93,17 +140,17 @@ export const Dashboard: React.FC = () => {
             </div>
           </div>
           <div className="flex items-center gap-1.5 mt-3 text-[10px] text-emerald-600 font-semibold">
-            <span>+14.2%</span>
-            <span className="text-slate-400 font-normal">vs lunes pasado</span>
+            <span>{Number(salesGrowthVal) >= 0 ? `+${salesGrowthVal}%` : `${salesGrowthVal}%`}</span>
+            <span className="text-slate-400 font-normal">vs ayer</span>
           </div>
         </div>
 
-        {/* KPI 2 */}
+        {/* KPI 2: CITAS AGENDADAS */}
         <div className="p-5 bg-white border border-slate-200 rounded-xl relative overflow-hidden group shadow-sm">
           <div className="flex justify-between items-start">
             <div>
               <span className="text-[10px] font-bold uppercase text-slate-400 tracking-wider">Citas Agendadas</span>
-              <span className="text-2xl font-black text-slate-900 mt-1 block">
+              <span className="text-2xl font-black text-slate-900 mt-1 block font-mono">
                 {todayAppointments.length}
               </span>
             </div>
@@ -112,17 +159,17 @@ export const Dashboard: React.FC = () => {
             </div>
           </div>
           <div className="flex items-center gap-1.5 mt-3 text-[10px] text-indigo-600 font-semibold">
-            <span>{appointments.filter(a => a.status === 'completed').length} Completadas</span>
+            <span>{completedTodayCount} Completadas</span>
             <span className="text-slate-400 font-normal">de hoy</span>
           </div>
         </div>
 
-        {/* KPI 3 */}
+        {/* KPI 3: CLIENTES ACTIVOS */}
         <div className="p-5 bg-white border border-slate-200 rounded-xl relative overflow-hidden group shadow-sm">
           <div className="flex justify-between items-start">
             <div>
-              <span className="text-[10px] font-bold uppercase text-slate-400 tracking-wider">Clientes Activos</span>
-              <span className="text-2xl font-black text-slate-900 mt-1 block">
+              <span className="text-[10px] font-bold uppercase text-slate-400 tracking-wider">Clientes Registrados</span>
+              <span className="text-2xl font-black text-slate-900 mt-1 block font-mono">
                 {activeClientsCount}
               </span>
             </div>
@@ -131,17 +178,17 @@ export const Dashboard: React.FC = () => {
             </div>
           </div>
           <div className="flex items-center gap-1.5 mt-3 text-[10px] text-purple-600 font-semibold">
-            <span>+4 nuevos</span>
-            <span className="text-slate-400 font-normal">este mes</span>
+            <span>{clients.filter(c => c.isRegistered).length} frecuentes</span>
+            <span className="text-slate-400 font-normal">en base de datos</span>
           </div>
         </div>
 
-        {/* KPI 4 */}
+        {/* KPI 4: INSUMOS CRÍTICOS */}
         <div className="p-5 bg-white border border-slate-200 rounded-xl relative overflow-hidden group shadow-sm">
           <div className="flex justify-between items-start">
             <div>
               <span className="text-[10px] font-bold uppercase text-slate-400 tracking-wider">Insumos Críticos</span>
-              <span className={`text-2xl font-black mt-1 block ${criticalStockCount > 0 ? 'text-rose-600' : 'text-slate-900'}`}>
+              <span className={`text-2xl font-black mt-1 block font-mono ${criticalStockCount > 0 ? 'text-rose-600' : 'text-slate-900'}`}>
                 {criticalStockCount}
               </span>
             </div>
@@ -163,7 +210,7 @@ export const Dashboard: React.FC = () => {
           <div className="flex justify-between items-center pb-2 border-b border-slate-100">
             <h3 className="font-bold text-rose-600 text-xs uppercase tracking-wider flex items-center gap-1.5">
               <AlertTriangle className="w-4 h-4 stroke-[2]" />
-              <span>Insumos con Stock Crítico</span>
+              <span>Insumos con Stock Crítico en Inventario</span>
             </h3>
             <span className="bg-rose-50 text-rose-600 text-[10px] px-2.5 py-0.5 rounded-full font-bold border border-rose-100">
               {criticalStockCount} ítems en alerta
@@ -190,9 +237,12 @@ export const Dashboard: React.FC = () => {
       {/* VISUALIZACIONES GRÁFICAS */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         
-        {/* GRÁFICO REVENUE */}
+        {/* GRÁFICO REVENUE REAL 7 DÍAS */}
         <div className="md:col-span-2 p-5 bg-white border border-slate-200 rounded-xl space-y-4 shadow-sm">
-          <h3 className="font-bold text-slate-800 text-xs uppercase tracking-wider">Curva de Ingresos Semanales</h3>
+          <div className="flex justify-between items-center">
+            <h3 className="font-bold text-slate-800 text-xs uppercase tracking-wider">Curva de Ingresos Semanales en Tiempo Real</h3>
+            <span className="text-[10px] text-slate-400 font-bold font-mono">Últimos 7 días</span>
+          </div>
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={revenueHistory} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
@@ -205,6 +255,7 @@ export const Dashboard: React.FC = () => {
                 <XAxis dataKey="name" stroke="#64748b" fontSize={11} tickLine={false} />
                 <YAxis stroke="#64748b" fontSize={11} tickLine={false} />
                 <Tooltip
+                  formatter={(value: any) => [`${Number(value).toFixed(2)} ${companyInfo.currencySymbol}`, 'Ingresos']}
                   contentStyle={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '8px', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.05)' }}
                   labelStyle={{ color: '#0f172a', fontWeight: 'bold', fontSize: '12px' }}
                 />
@@ -216,7 +267,7 @@ export const Dashboard: React.FC = () => {
 
         {/* DISTRIBUCIÓN POR SERVICIO */}
         <div className="p-5 bg-white border border-slate-200 rounded-xl space-y-4 shadow-sm">
-          <h3 className="font-bold text-slate-800 text-xs uppercase tracking-wider">Servicios más Solicitados</h3>
+          <h3 className="font-bold text-slate-800 text-xs uppercase tracking-wider">Demanda por Categoría</h3>
           <div className="h-44 flex items-center justify-center">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
@@ -242,7 +293,7 @@ export const Dashboard: React.FC = () => {
               <div key={c.name} className="flex items-center gap-1.5">
                 <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: c.color }} />
                 <span className="text-slate-500 font-medium">{c.name}:</span>
-                <span className="text-slate-900 font-bold ml-auto">{c.value}</span>
+                <span className="text-slate-900 font-bold ml-auto font-mono">{c.value}</span>
               </div>
             ))}
           </div>

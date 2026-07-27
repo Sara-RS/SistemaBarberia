@@ -17,6 +17,7 @@ import {
   Provider,
   Sale,
   CashSession,
+  CompanyInfo,
 } from '../types';
 
 interface AppContextProps {
@@ -26,6 +27,7 @@ interface AppContextProps {
   setSelectedBranchId: (id: string) => void;
   
   // Data vectors (reactive state)
+  companyInfo: CompanyInfo;
   branches: Branch[];
   employees: Employee[];
   services: Service[];
@@ -39,6 +41,7 @@ interface AppContextProps {
 
   // Actions
   refreshAll: () => void;
+  updateCompanyInfo: (updates: Partial<CompanyInfo>) => void;
   addClient: (client: Omit<Client, 'id' | 'createdAt'>) => Client;
   addAppointment: (apt: Omit<Appointment, 'id' | 'createdAt'>) => Appointment;
   updateAptStatus: (id: string, status: any) => void;
@@ -68,6 +71,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [selectedBranchId, setSelectedBranchId] = useState<string>('branch-coyoacan');
 
   // React state vectors
+  const [companyInfo, setCompanyInfo] = useState<CompanyInfo>(mockDb.getCompanyInfo());
   const [branches, setBranches] = useState<Branch[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [services, setServices] = useState<Service[]>([]);
@@ -81,6 +85,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Cargar estado inicial desde el mock DB
   const refreshAll = () => {
+    setCompanyInfo(mockDb.getCompanyInfo());
     setBranches(mockDb.getBranches());
     setEmployees(mockDb.getEmployees());
     setServices(mockDb.getServices());
@@ -98,6 +103,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [selectedBranchId]);
 
   // --- ACTIONS WITH MOCK DB SYNCHRONIZATION ---
+
+  const updateCompanyInfo = (updates: Partial<CompanyInfo>) => {
+    mockDb.updateCompanyInfo(updates);
+    refreshAll();
+  };
 
   const addClient = (client: Omit<Client, 'id' | 'createdAt'>) => {
     const res = mockDb.createClient(client);
@@ -219,6 +229,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setCurrentRole,
         selectedBranchId,
         setSelectedBranchId,
+        companyInfo,
         branches,
         employees,
         services,
@@ -230,6 +241,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         sales,
         activeSession,
         refreshAll,
+        updateCompanyInfo,
         addClient,
         addAppointment,
         updateAptStatus,

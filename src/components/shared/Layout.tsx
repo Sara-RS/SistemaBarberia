@@ -24,6 +24,7 @@ import {
   Sparkles,
   DollarSign,
   Monitor,
+  MessageSquare,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -34,7 +35,7 @@ interface LayoutProps {
 }
 
 export const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab }) => {
-  const { currentRole, setCurrentRole, selectedBranchId, setSelectedBranchId, branches, activeSession } = useApp();
+  const { currentRole, setCurrentRole, selectedBranchId, setSelectedBranchId, branches, activeSession, companyInfo } = useApp();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [currentTime, setCurrentTime] = useState<string>('');
@@ -67,11 +68,13 @@ export const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTa
   const adminMenuItems = [
     { id: 'dashboard', name: 'Dashboard', icon: TrendingUp },
     { id: 'calendar', name: 'Agenda', icon: Calendar },
-    { id: 'pos', name: 'Caja & POS', icon: DollarSign },
+    { id: 'pos', name: 'Caja', icon: DollarSign },
     { id: 'inventory', name: 'Inventario', icon: Package },
     { id: 'services', name: 'Servicios', icon: Scissors },
     { id: 'staff', name: 'Barberos', icon: Users },
     { id: 'clients', name: 'Clientes', icon: UserCheck },
+    { id: 'reminders', name: 'Recordatorios WhatsApp', icon: MessageSquare },
+    { id: 'settings', name: 'Parametrización', icon: Settings },
   ];
 
   const clientMenuItems = [
@@ -100,11 +103,17 @@ export const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTa
         {/* LOGO AREA */}
         <div className="h-16 flex items-center px-6 border-b border-slate-200 justify-between">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center text-white font-black shadow-md shadow-indigo-600/10">
-              <Scissors className="w-4 h-4 stroke-[2.5]" />
-            </div>
+            {companyInfo.logoUrl ? (
+              <img src={companyInfo.logoUrl} alt="Logo" className="w-8 h-8 rounded-lg object-cover border border-slate-200" />
+            ) : (
+              <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center text-white font-black shadow-md shadow-indigo-600/10">
+                <Scissors className="w-4 h-4 stroke-[2.5]" />
+              </div>
+            )}
             <div>
-              <span className="font-bold tracking-tight text-slate-900 block leading-tight">Barbería "Josue"</span>
+              <span className="font-bold tracking-tight text-slate-900 block leading-tight truncate max-w-[130px]">
+                {companyInfo.name || 'Barbería'}
+              </span>
               <span className="text-[10px] text-indigo-600 font-medium tracking-widest uppercase">Management OS</span>
             </div>
           </div>

@@ -1,299 +1,304 @@
 -- ==========================================
 -- SCRIPT DE BASE DE DATOS: BARBERÍA PRO
 -- OPTIMIZADO PARA POSTGRESQL / SUPABASE DB
--- MULTI-TENANCY CON FILTRADO RLS
+-- MULTI-TENANCY EN ESPAÑOL CON FILTRADO RLS
 -- ==========================================
 
 -- Habilitar extensiones de UUID
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
--- 1. TABLA: TENANTS (Organizaciones)
-CREATE TABLE tenants (
+-- 1. TABLA: EMPRESAS (Organizaciones / Tenants)
+CREATE TABLE empresas (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    name VARCHAR(150) NOT NULL,
-    subdomain VARCHAR(50) UNIQUE NOT NULL,
-    logo_url VARCHAR(255),
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL
+    nombre VARCHAR(150) NOT NULL,
+    subdominio VARCHAR(50) UNIQUE NOT NULL,
+    url_logo VARCHAR(255),
+    eslogan TEXT,
+    nit_ruc VARCHAR(50),
+    direccion TEXT,
+    telefono VARCHAR(20),
+    correo VARCHAR(150),
+    mensaje_pie_recibo TEXT,
+    simbolo_moneda VARCHAR(10) DEFAULT 'Bs.',
+    porcentaje_comision_defecto DECIMAL(5,2) DEFAULT 35.00,
+    creado_en TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
 
--- 2. TABLA: BRANCHES (Sucursales)
-CREATE TABLE branches (
+-- 2. TABLA: SUCURSALES
+CREATE TABLE sucursales (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE NOT NULL,
-    name VARCHAR(100) NOT NULL,
-    address TEXT NOT NULL,
-    phone VARCHAR(20) NOT NULL,
-    opening_hours JSONB NOT NULL, -- Horarios detallados por día
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL
+    empresa_id UUID REFERENCES empresas(id) ON DELETE CASCADE NOT NULL,
+    nombre VARCHAR(100) NOT NULL,
+    direccion TEXT NOT NULL,
+    telefono VARCHAR(20) NOT NULL,
+    horario_atencion JSONB NOT NULL, -- Horarios detallados por día
+    creado_en TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
 
--- Crear índice para mejorar consultas de Tenant -> Branches
-CREATE INDEX idx_branches_tenant ON branches(tenant_id);
+-- Crear índice para consultas Empresa -> Sucursales
+CREATE INDEX idx_sucursales_empresa ON sucursales(empresa_id);
 
--- 3. TABLA: USERS (Usuarios con credenciales)
-CREATE TABLE users (
+-- 3. TABLA: USUARIOS (Usuarios con credenciales de acceso)
+CREATE TABLE usuarios (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    email VARCHAR(150) UNIQUE NOT NULL,
-    role VARCHAR(20) CHECK (role IN ('admin', 'recep', 'barber', 'client')) NOT NULL,
-    full_name VARCHAR(150) NOT NULL,
-    phone VARCHAR(20),
-    avatar_url VARCHAR(255),
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL
+    correo VARCHAR(150) UNIQUE NOT NULL,
+    rol VARCHAR(20) CHECK (rol IN ('admin', 'recep', 'barber', 'client')) NOT NULL,
+    nombre_completo VARCHAR(150) NOT NULL,
+    telefono VARCHAR(20),
+    url_avatar VARCHAR(255),
+    creado_en TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
 
--- 4. TABLA: EMPLOYEES (Empleados y Barberos)
-CREATE TABLE employees (
+-- 4. TABLA: EMPLEADOS (Empleados y Barberos)
+CREATE TABLE empleados (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    branch_id UUID REFERENCES branches(id) ON DELETE CASCADE NOT NULL,
-    user_id UUID REFERENCES users(id) ON DELETE SET NULL,
-    full_name VARCHAR(150) NOT NULL,
-    phone VARCHAR(20) NOT NULL,
-    email VARCHAR(150) NOT NULL,
-    role VARCHAR(20) CHECK (role IN ('admin', 'recep', 'barber')) NOT NULL,
-    specialties TEXT[] NOT NULL, -- Especialidades (categorías)
-    commission_rate DECIMAL(5,2) DEFAULT 0.00 CHECK (commission_rate >= 0.00 AND commission_rate <= 100.00) NOT NULL,
-    schedule JSONB NOT NULL, -- Horarios personales, almuerzo, descansos
-    vacations JSONB DEFAULT '[]'::jsonb NOT NULL,
-    active BOOLEAN DEFAULT TRUE NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL
+    sucursal_id UUID REFERENCES sucursales(id) ON DELETE CASCADE NOT NULL,
+    usuario_id UUID REFERENCES usuarios(id) ON DELETE SET NULL,
+    nombre_completo VARCHAR(150) NOT NULL,
+    telefono VARCHAR(20) NOT NULL,
+    correo VARCHAR(150) NOT NULL,
+    rol VARCHAR(20) CHECK (rol IN ('admin', 'recep', 'barber')) NOT NULL,
+    especialidades TEXT[] NOT NULL, -- Especialidades (categorías)
+    porcentaje_comision DECIMAL(5,2) DEFAULT 35.00 CHECK (porcentaje_comision >= 0.00 AND porcentaje_comision <= 100.00) NOT NULL,
+    horario_trabajo JSONB NOT NULL, -- Horarios personales, turnos, descansos
+    vacaciones JSONB DEFAULT '[]'::jsonb NOT NULL,
+    activo BOOLEAN DEFAULT TRUE NOT NULL,
+    creado_en TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
 
-CREATE INDEX idx_employees_branch ON employees(branch_id);
+CREATE INDEX idx_empleados_sucursal ON empleados(sucursal_id);
 
--- 5. TABLA: SERVICES (Catálogo de Servicios)
-CREATE TABLE services (
+-- 5. TABLA: SERVICIOS (Catálogo de Servicios de la Empresa)
+CREATE TABLE servicios (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE NOT NULL,
-    name VARCHAR(100) NOT NULL,
-    description TEXT,
-    price DECIMAL(10,2) CHECK (price >= 0.00) NOT NULL,
-    duration INT CHECK (duration > 0) NOT NULL, -- En minutos
-    cleanup_time INT DEFAULT 0 CHECK (cleanup_time >= 0) NOT NULL, -- En minutos
-    category VARCHAR(50) NOT NULL,
-    color VARCHAR(10) NOT NULL, -- Hex o color-code para agenda
-    image_url VARCHAR(255),
-    active BOOLEAN DEFAULT TRUE NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL
+    empresa_id UUID REFERENCES empresas(id) ON DELETE CASCADE NOT NULL,
+    nombre VARCHAR(100) NOT NULL,
+    descripcion TEXT,
+    precio DECIMAL(10,2) CHECK (precio >= 0.00) NOT NULL,
+    duracion INT CHECK (duracion > 0) NOT NULL, -- En minutos
+    tiempo_limpieza INT DEFAULT 0 CHECK (tiempo_limpieza >= 0) NOT NULL, -- En minutos
+    categoria VARCHAR(50) NOT NULL,
+    color VARCHAR(10) NOT NULL, -- Hex o color-code para la agenda
+    url_imagen VARCHAR(255),
+    activo BOOLEAN DEFAULT TRUE NOT NULL,
+    creado_en TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
 
-CREATE INDEX idx_services_tenant ON services(tenant_id);
+CREATE INDEX idx_servicios_empresa ON servicios(empresa_id);
 
--- 6. TABLA: CLIENTS (Clientes unificados)
-CREATE TABLE clients (
+-- 6. TABLA: CLIENTES (Base de datos de Clientes)
+CREATE TABLE clientes (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE NOT NULL,
-    full_name VARCHAR(150) NOT NULL,
-    phone VARCHAR(20) NOT NULL,
-    email VARCHAR(150) NOT NULL,
-    is_registered BOOLEAN DEFAULT FALSE NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    -- Previene duplicados del mismo cliente en un mismo tenant por correo o teléfono
-    CONSTRAINT uq_client_email_tenant UNIQUE (tenant_id, email),
-    CONSTRAINT uq_client_phone_tenant UNIQUE (tenant_id, phone)
+    empresa_id UUID REFERENCES empresas(id) ON DELETE CASCADE NOT NULL,
+    nombre_completo VARCHAR(150) NOT NULL,
+    telefono VARCHAR(20) NOT NULL,
+    correo VARCHAR(150) NOT NULL,
+    esta_registrado BOOLEAN DEFAULT FALSE NOT NULL,
+    creado_en TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    CONSTRAINT uq_cliente_correo_empresa UNIQUE (empresa_id, correo),
+    CONSTRAINT uq_cliente_telefono_empresa UNIQUE (empresa_id, telefono)
 );
 
-CREATE INDEX idx_clients_tenant ON clients(tenant_id);
+CREATE INDEX idx_clientes_empresa ON clientes(empresa_id);
 
--- 7. TABLA: APPOINTMENTS (Agenda y Reservas)
-CREATE TABLE appointments (
+-- 7. TABLA: CITAS (Agenda y Reservas)
+CREATE TABLE citas (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    branch_id UUID REFERENCES branches(id) ON DELETE CASCADE NOT NULL,
-    client_id UUID REFERENCES clients(id) ON DELETE RESTRICT NOT NULL,
-    employee_id UUID REFERENCES employees(id) ON DELETE RESTRICT NOT NULL,
-    service_id UUID REFERENCES services(id) ON DELETE RESTRICT NOT NULL,
-    date DATE NOT NULL,
-    start_time TIME NOT NULL,
-    end_time TIME NOT NULL,
-    status VARCHAR(20) CHECK (status IN ('pending', 'confirmed', 'completed', 'cancelled', 'no-show')) DEFAULT 'pending' NOT NULL,
-    price DECIMAL(10,2) NOT NULL,
-    notes TEXT,
-    is_walk_in BOOLEAN DEFAULT FALSE NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    -- Validaciones: hora fin posterior a inicio
-    CONSTRAINT chk_appointment_time CHECK (end_time > start_time)
+    sucursal_id UUID REFERENCES sucursales(id) ON DELETE CASCADE NOT NULL,
+    cliente_id UUID REFERENCES clientes(id) ON DELETE RESTRICT NOT NULL,
+    empleado_id UUID REFERENCES empleados(id) ON DELETE RESTRICT NOT NULL,
+    servicio_id UUID REFERENCES servicios(id) ON DELETE RESTRICT NOT NULL,
+    fecha DATE NOT NULL,
+    hora_inicio TIME NOT NULL,
+    hora_fin TIME NOT NULL,
+    estado VARCHAR(20) CHECK (estado IN ('pending', 'confirmed', 'completed', 'cancelled', 'no-show')) DEFAULT 'pending' NOT NULL,
+    precio DECIMAL(10,2) NOT NULL,
+    notas TEXT,
+    es_sin_cita BOOLEAN DEFAULT FALSE NOT NULL,
+    creado_en TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    CONSTRAINT chk_cita_horario CHECK (hora_fin > hora_inicio)
 );
 
-CREATE INDEX idx_appointments_branch_date ON appointments(branch_id, date);
-CREATE INDEX idx_appointments_employee_date ON appointments(employee_id, date);
+CREATE INDEX idx_citas_sucursal_fecha ON citas(sucursal_id, fecha);
+CREATE INDEX idx_citas_empleado_fecha ON citas(empleado_id, fecha);
 
--- 8. TABLA: QUEUE_ITEMS (Clientes Walk-In en lista de espera)
-CREATE TABLE queue_items (
+-- 8. TABLA: TURNOS_ESPERA (Lista de espera de clientes presenciales)
+CREATE TABLE turnos_espera (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    branch_id UUID REFERENCES branches(id) ON DELETE CASCADE NOT NULL,
-    full_name VARCHAR(150) NOT NULL,
-    phone VARCHAR(20) NOT NULL,
-    email VARCHAR(150),
-    employee_id UUID REFERENCES employees(id) ON DELETE SET NULL, -- Asignado o primer disponible
-    service_id UUID REFERENCES services(id) ON DELETE RESTRICT NOT NULL,
-    status VARCHAR(20) CHECK (status IN ('waiting', 'serving', 'completed', 'cancelled')) DEFAULT 'waiting' NOT NULL,
-    joined_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    served_at TIMESTAMP WITH TIME ZONE,
-    estimated_wait_time INT DEFAULT 0 NOT NULL, -- En minutos
-    priority VARCHAR(10) CHECK (priority IN ('normal', 'high')) DEFAULT 'normal' NOT NULL
+    sucursal_id UUID REFERENCES sucursales(id) ON DELETE CASCADE NOT NULL,
+    nombre_completo VARCHAR(150) NOT NULL,
+    telefono VARCHAR(20) NOT NULL,
+    correo VARCHAR(150),
+    empleado_id UUID REFERENCES empleados(id) ON DELETE SET NULL, -- Asignado o primer disponible
+    servicio_id UUID REFERENCES servicios(id) ON DELETE RESTRICT NOT NULL,
+    estado VARCHAR(20) CHECK (estado IN ('waiting', 'serving', 'completed', 'cancelled')) DEFAULT 'waiting' NOT NULL,
+    fecha_llegada TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    fecha_atencion TIMESTAMP WITH TIME ZONE,
+    tiempo_espera_estimado INT DEFAULT 0 NOT NULL, -- En minutos
+    prioridad VARCHAR(10) CHECK (prioridad IN ('normal', 'high')) DEFAULT 'normal' NOT NULL
 );
 
-CREATE INDEX idx_queue_branch ON queue_items(branch_id, status);
+CREATE INDEX idx_turnos_sucursal_estado ON turnos_espera(sucursal_id, estado);
 
--- 9. TABLA: PROVIDERS (Proveedores)
-CREATE TABLE providers (
+-- 9. TABLA: PROVEEDORES
+CREATE TABLE proveedores (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE NOT NULL,
-    name VARCHAR(150) NOT NULL,
-    contact_name VARCHAR(150),
-    phone VARCHAR(20) NOT NULL,
-    email VARCHAR(150) NOT NULL,
-    address TEXT,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL
+    empresa_id UUID REFERENCES empresas(id) ON DELETE CASCADE NOT NULL,
+    nombre VARCHAR(150) NOT NULL,
+    nombre_contacto VARCHAR(150),
+    telefono VARCHAR(20) NOT NULL,
+    correo VARCHAR(150) NOT NULL,
+    direccion TEXT,
+    creado_en TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
 
--- 10. TABLA: PRODUCTS (Inventario de Productos)
-CREATE TABLE products (
+-- 10. TABLA: PRODUCTOS (Inventario por Sucursal)
+CREATE TABLE productos (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    branch_id UUID REFERENCES branches(id) ON DELETE CASCADE NOT NULL,
-    name VARCHAR(150) NOT NULL,
+    sucursal_id UUID REFERENCES sucursales(id) ON DELETE CASCADE NOT NULL,
+    nombre VARCHAR(150) NOT NULL,
     sku VARCHAR(50) NOT NULL,
-    description TEXT,
-    price DECIMAL(10,2) CHECK (price >= 0.00) NOT NULL, -- Venta
-    cost DECIMAL(10,2) CHECK (cost >= 0.00) NOT NULL, -- Costo de compra
-    stock INT DEFAULT 0 CHECK (stock >= 0) NOT NULL,
-    min_stock INT DEFAULT 0 CHECK (min_stock >= 0) NOT NULL,
-    category VARCHAR(50) NOT NULL,
-    provider_id UUID REFERENCES providers(id) ON DELETE SET NULL,
-    active BOOLEAN DEFAULT TRUE NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    CONSTRAINT uq_product_sku_branch UNIQUE (branch_id, sku)
+    descripcion TEXT,
+    precio DECIMAL(10,2) CHECK (precio >= 0.00) NOT NULL, -- Venta
+    costo DECIMAL(10,2) CHECK (costo >= 0.00) NOT NULL, -- Costo de compra
+    existencia INT DEFAULT 0 CHECK (existencia >= 0) NOT NULL,
+    existencia_minima INT DEFAULT 0 CHECK (existencia_minima >= 0) NOT NULL,
+    categoria VARCHAR(50) NOT NULL,
+    proveedor_id UUID REFERENCES proveedores(id) ON DELETE SET NULL,
+    activo BOOLEAN DEFAULT TRUE NOT NULL,
+    creado_en TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    CONSTRAINT uq_producto_sku_sucursal UNIQUE (sucursal_id, sku)
 );
 
-CREATE INDEX idx_products_branch ON products(branch_id);
+CREATE INDEX idx_productos_sucursal ON productos(sucursal_id);
 
--- 11. TABLA: INVENTORY_TRANSACTIONS (Movimientos de Inventario)
-CREATE TABLE inventory_transactions (
+-- 11. TABLA: MOVIMIENTOS_INVENTARIO (Auditoría de Entradas / Salidas)
+CREATE TABLE movimientos_inventario (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    branch_id UUID REFERENCES branches(id) ON DELETE CASCADE NOT NULL,
-    product_id UUID REFERENCES products(id) ON DELETE CASCADE NOT NULL,
-    type VARCHAR(20) CHECK (type IN ('in', 'out', 'adjustment', 'sale', 'purchase')) NOT NULL,
-    quantity INT NOT NULL, -- positivo para entradas, negativo para salidas
-    reason VARCHAR(255) NOT NULL,
-    date TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    employee_id UUID REFERENCES employees(id) ON DELETE RESTRICT NOT NULL
+    sucursal_id UUID REFERENCES sucursales(id) ON DELETE CASCADE NOT NULL,
+    producto_id UUID REFERENCES productos(id) ON DELETE CASCADE NOT NULL,
+    tipo VARCHAR(20) CHECK (tipo IN ('in', 'out', 'adjustment', 'sale', 'purchase')) NOT NULL,
+    cantidad INT NOT NULL, -- Positivo para entradas, negativo para salidas
+    motivo VARCHAR(255) NOT NULL,
+    fecha TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    empleado_id UUID REFERENCES empleados(id) ON DELETE RESTRICT NOT NULL
 );
 
--- 12. TABLA: PURCHASES (Compras de Abastecimiento)
-CREATE TABLE purchases (
+-- 12. TABLA: COMPRAS (Abastecimiento de Inventario)
+CREATE TABLE compras (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    branch_id UUID REFERENCES branches(id) ON DELETE CASCADE NOT NULL,
-    provider_id UUID REFERENCES providers(id) ON DELETE RESTRICT NOT NULL,
-    invoice_number VARCHAR(100),
-    status VARCHAR(20) CHECK (status IN ('pending', 'completed', 'cancelled')) DEFAULT 'pending' NOT NULL,
+    sucursal_id UUID REFERENCES sucursales(id) ON DELETE CASCADE NOT NULL,
+    proveedor_id UUID REFERENCES proveedores(id) ON DELETE RESTRICT NOT NULL,
+    numero_factura VARCHAR(100),
+    estado VARCHAR(20) CHECK (estado IN ('pending', 'completed', 'cancelled')) DEFAULT 'pending' NOT NULL,
     total DECIMAL(10,2) DEFAULT 0.00 CHECK (total >= 0.00) NOT NULL,
-    date DATE NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL
+    fecha DATE NOT NULL,
+    creado_en TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
 
--- 13. TABLA: PURCHASE_ITEMS (Líneas de Compra)
-CREATE TABLE purchase_items (
+-- 13. TABLA: DETALLES_COMPRA
+CREATE TABLE detalles_compra (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    purchase_id UUID REFERENCES purchases(id) ON DELETE CASCADE NOT NULL,
-    product_id UUID REFERENCES products(id) ON DELETE RESTRICT NOT NULL,
-    quantity INT CHECK (quantity > 0) NOT NULL,
-    cost DECIMAL(10,2) CHECK (cost >= 0.00) NOT NULL
+    compra_id UUID REFERENCES compras(id) ON DELETE CASCADE NOT NULL,
+    producto_id UUID REFERENCES productos(id) ON DELETE RESTRICT NOT NULL,
+    cantidad INT CHECK (cantidad > 0) NOT NULL,
+    costo DECIMAL(10,2) CHECK (costo >= 0.00) NOT NULL
 );
 
--- 14. TABLA: CASH_SESSIONS (Apertura y Cierre de Caja)
-CREATE TABLE cash_sessions (
+-- 14. TABLA: SESIONES_CAJA (Apertura y Cierre de Caja Chica / POS)
+CREATE TABLE sesiones_caja (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    branch_id UUID REFERENCES branches(id) ON DELETE CASCADE NOT NULL,
-    employee_id UUID REFERENCES employees(id) ON DELETE RESTRICT NOT NULL,
-    opened_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    closed_at TIMESTAMP WITH TIME ZONE,
-    opening_balance DECIMAL(10,2) CHECK (opening_balance >= 0.00) NOT NULL,
-    closing_balance DECIMAL(10,2) CHECK (closing_balance >= 0.00),
-    expected_balance DECIMAL(10,2) CHECK (expected_balance >= 0.00),
-    status VARCHAR(20) CHECK (status IN ('open', 'closed')) DEFAULT 'open' NOT NULL,
-    notes TEXT,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL
+    sucursal_id UUID REFERENCES sucursales(id) ON DELETE CASCADE NOT NULL,
+    empleado_id UUID REFERENCES empleados(id) ON DELETE RESTRICT NOT NULL,
+    fecha_apertura TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    fecha_cierre TIMESTAMP WITH TIME ZONE,
+    saldo_inicial DECIMAL(10,2) CHECK (saldo_inicial >= 0.00) NOT NULL,
+    saldo_final DECIMAL(10,2) CHECK (saldo_final >= 0.00),
+    saldo_esperado DECIMAL(10,2) CHECK (saldo_esperado >= 0.00),
+    estado VARCHAR(20) CHECK (estado IN ('open', 'closed')) DEFAULT 'open' NOT NULL,
+    notas TEXT,
+    creado_en TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
 
--- 15. TABLA: CASH_MOVEMENTS (Movimientos de Efectivo)
-CREATE TABLE cash_movements (
+-- 15. TABLA: MOVIMIENTOS_CAJA (Entradas y Salidas de Efectivo)
+CREATE TABLE movimientos_caja (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    session_id UUID REFERENCES cash_sessions(id) ON DELETE CASCADE NOT NULL,
-    type VARCHAR(10) CHECK (type IN ('income', 'expense')) NOT NULL,
-    amount DECIMAL(10,2) CHECK (amount > 0.00) NOT NULL,
-    reason VARCHAR(255) NOT NULL,
-    date TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL
+    sesion_id UUID REFERENCES sesiones_caja(id) ON DELETE CASCADE NOT NULL,
+    tipo VARCHAR(10) CHECK (tipo IN ('income', 'expense')) NOT NULL,
+    monto DECIMAL(10,2) CHECK (monto > 0.00) NOT NULL,
+    motivo VARCHAR(255) NOT NULL,
+    fecha TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
 
--- 16. TABLA: SALES (Ventas rápidas / POS)
-CREATE TABLE sales (
+-- 16. TABLA: VENTAS (Ventas POS / Facturación)
+CREATE TABLE ventas (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    branch_id UUID REFERENCES branches(id) ON DELETE CASCADE NOT NULL,
-    client_id UUID REFERENCES clients(id) ON DELETE SET NULL,
-    cashier_id UUID REFERENCES employees(id) ON DELETE RESTRICT NOT NULL,
+    sucursal_id UUID REFERENCES sucursales(id) ON DELETE CASCADE NOT NULL,
+    cliente_id UUID REFERENCES clientes(id) ON DELETE SET NULL,
+    cajero_id UUID REFERENCES empleados(id) ON DELETE RESTRICT NOT NULL,
     subtotal DECIMAL(10,2) NOT NULL,
-    discount DECIMAL(10,2) DEFAULT 0.00 NOT NULL,
-    tax DECIMAL(10,2) DEFAULT 0.00 NOT NULL,
-    tip DECIMAL(10,2) DEFAULT 0.00 NOT NULL,
+    descuento DECIMAL(10,2) DEFAULT 0.00 NOT NULL,
+    impuesto DECIMAL(10,2) DEFAULT 0.00 NOT NULL,
+    propina DECIMAL(10,2) DEFAULT 0.00 NOT NULL,
     total DECIMAL(10,2) NOT NULL,
-    payment_method VARCHAR(20) CHECK (payment_method IN ('cash', 'card', 'transfer', 'mixed')) NOT NULL,
-    payment_details JSONB,
-    date TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL
+    metodo_pago VARCHAR(20) CHECK (metodo_pago IN ('cash', 'card', 'transfer', 'mixed')) NOT NULL,
+    detalles_pago JSONB,
+    fecha TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    creado_en TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
 
--- 17. TABLA: SALE_ITEMS (Detalles de Venta y comisiones)
-CREATE TABLE sale_items (
+-- 17. TABLA: DETALLES_VENTA (Líneas de Venta y Comisiones)
+CREATE TABLE detalles_venta (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    sale_id UUID REFERENCES sales(id) ON DELETE CASCADE NOT NULL,
-    type VARCHAR(10) CHECK (type IN ('service', 'product')) NOT NULL,
+    venta_id UUID REFERENCES ventas(id) ON DELETE CASCADE NOT NULL,
+    tipo VARCHAR(10) CHECK (tipo IN ('service', 'product')) NOT NULL,
     item_id UUID NOT NULL, -- ID de servicio o producto (según tipo)
-    quantity INT CHECK (quantity > 0) NOT NULL,
-    price DECIMAL(10,2) NOT NULL,
-    employee_id UUID REFERENCES employees(id) ON DELETE SET NULL, -- Barbero que lo realizó (comisión)
-    commission_amount DECIMAL(10,2) DEFAULT 0.00 NOT NULL
+    cantidad INT CHECK (cantidad > 0) NOT NULL,
+    precio DECIMAL(10,2) NOT NULL,
+    empleado_id UUID REFERENCES empleados(id) ON DELETE SET NULL, -- Barbero atendió
+    monto_comision DECIMAL(10,2) DEFAULT 0.00 NOT NULL
 );
 
 -- ==========================================
 -- TRIGGERS Y FUNCIONES DE AUTOMATIZACIÓN
 -- ==========================================
 
--- Función para actualizar el stock cuando se vende un producto
-CREATE OR REPLACE FUNCTION function_adjust_stock_on_sale()
+-- Función para actualizar existencias cuando se vende un producto
+CREATE OR REPLACE FUNCTION funcion_ajustar_existencias_al_vender()
 RETURNS TRIGGER AS $$
 BEGIN
-    IF NEW.type = 'product' THEN
-        UPDATE products
-        SET stock = stock - NEW.quantity
+    IF NEW.tipo = 'product' THEN
+        UPDATE productos
+        SET existencia = existencia - NEW.cantidad
         WHERE id = NEW.item_id;
         
-        -- Insertar registro automático de transacción de inventario
-        INSERT INTO inventory_transactions (branch_id, product_id, type, quantity, reason, employee_id)
-        SELECT s.branch_id, NEW.item_id, 'sale', -NEW.quantity, 'Venta rápida POS #' || NEW.sale_id, s.cashier_id
-        FROM sales s WHERE s.id = NEW.sale_id;
+        -- Registro automático en movimientos de inventario
+        INSERT INTO movimientos_inventario (sucursal_id, producto_id, tipo, cantidad, motivo, empleado_id)
+        SELECT v.sucursal_id, NEW.item_id, 'sale', -NEW.cantidad, 'Venta rápida POS #' || NEW.venta_id, v.cajero_id
+        FROM ventas v WHERE v.id = NEW.venta_id;
     END IF;
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE TRIGGER trigger_sale_adjust_stock
-AFTER INSERT ON sale_items
+CREATE TRIGGER trigger_venta_ajustar_existencias
+AFTER INSERT ON detalles_venta
 FOR EACH ROW
-EXECUTE FUNCTION function_adjust_stock_on_sale();
+EXECUTE FUNCTION funcion_ajustar_existencias_al_vender();
 
 -- ==========================================
 -- SEGURIDAD: ROW LEVEL SECURITY (RLS)
 -- ==========================================
 
 -- Habilitar RLS en tablas principales
-ALTER TABLE branches ENABLE ROW LEVEL SECURITY;
-ALTER TABLE employees ENABLE ROW LEVEL SECURITY;
-ALTER TABLE clients ENABLE ROW LEVEL SECURITY;
-ALTER TABLE appointments ENABLE ROW LEVEL SECURITY;
-ALTER TABLE products ENABLE ROW LEVEL SECURITY;
-ALTER TABLE sales ENABLE ROW LEVEL SECURITY;
+ALTER TABLE sucursales ENABLE ROW LEVEL SECURITY;
+ALTER TABLE empleados ENABLE ROW LEVEL SECURITY;
+ALTER TABLE clientes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE citas ENABLE ROW LEVEL SECURITY;
+ALTER TABLE productos ENABLE ROW LEVEL SECURITY;
+ALTER TABLE ventas ENABLE ROW LEVEL SECURITY;
 
--- Ejemplo de política de seguridad para el aislamiento multi-tenant:
--- "Los empleados de una sucursal solo pueden ver los datos de esa sucursal"
-CREATE POLICY branch_isolation_policy ON appointments
+-- Política de seguridad multi-tenant (Aislamiento por Sucursal)
+CREATE POLICY politica_aislamiento_sucursal ON citas
     FOR ALL
-    USING (branch_id = (SELECT branch_id FROM employees WHERE user_id = auth.uid()));
+    USING (sucursal_id = (SELECT sucursal_id FROM empleados WHERE usuario_id = auth.uid()));

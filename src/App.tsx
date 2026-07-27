@@ -20,6 +20,8 @@ import { InventoryAdmin } from './components/admin/InventoryAdmin';
 import { ServicesAdmin } from './components/admin/ServicesAdmin';
 import { StaffAdmin } from './components/admin/StaffAdmin';
 import { ClientsAdmin } from './components/admin/ClientsAdmin';
+import { SettingsAdmin } from './components/admin/SettingsAdmin';
+import { WhatsAppReminders } from './components/admin/WhatsAppReminders';
 
 const WorkspaceSwitcher: React.FC = () => {
   // Por default iniciamos en el Dashboard administrativo (el rol inicial es 'admin')
@@ -52,6 +54,10 @@ const WorkspaceSwitcher: React.FC = () => {
         return <StaffAdmin />;
       case 'clients':
         return <ClientsAdmin />;
+      case 'reminders':
+        return <WhatsAppReminders />;
+      case 'settings':
+        return <SettingsAdmin />;
 
       default:
         return <Dashboard />;

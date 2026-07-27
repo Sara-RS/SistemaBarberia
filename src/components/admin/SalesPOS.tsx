@@ -5,8 +5,10 @@
 
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
-import { formatCurrency } from '../../utils/helpers';
+import { formatCurrency, getTodayStr } from '../../utils/helpers';
+import { generateDailyTransactionsPDF } from '../../utils/pdfGenerator';
 import { mockDb } from '../../db/mockDb';
+import { ReceiptModal } from '../shared/ReceiptModal';
 import {
   DollarSign,
   Plus,
@@ -20,6 +22,12 @@ import {
   User,
   CreditCard,
   UserCheck,
+  QrCode,
+  CheckCircle2,
+  Printer,
+  History,
+  Receipt,
+  FileDown
 } from 'lucide-react';
 
 export const SalesPOS: React.FC = () => {
@@ -32,6 +40,8 @@ export const SalesPOS: React.FC = () => {
     products,
     clients,
     employees,
+    sales,
+    companyInfo,
     addSale,
     selectedBranchId,
   } = useApp();
@@ -50,11 +60,14 @@ export const SalesPOS: React.FC = () => {
   const [cart, setCart] = useState<any[]>([]);
   const [selectedClientId, setSelectedClientId] = useState('');
   const [selectedBarberId, setSelectedBarberId] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'card' | 'mixed'>('cash');
+  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'card' | 'transfer' | 'mixed'>('cash');
+  const [cashReceived, setCashReceived] = useState<string>('');
+  const [qrReference, setQrReference] = useState('');
   const [tip, setTip] = useState<number>(0);
 
   // Receipt Modal State
   const [printedReceipt, setPrintedReceipt] = useState<any>(null);
+  const [viewHistoryReceipt, setViewHistoryReceipt] = useState<any>(null);
 
   // FILTRAR PRODUCTOS CON STOCK
   const availableProducts = products.filter(p => p.branchId === selectedBranchId);
@@ -93,6 +106,8 @@ export const SalesPOS: React.FC = () => {
 
   const cartSubtotal = cart.reduce((acc, c) => acc + c.price * c.quantity, 0);
   const cartTotal = cartSubtotal + Number(tip);
+  const receivedAmountVal = Number(cashReceived) || cartTotal;
+  const changeGivenVal = Math.max(0, receivedAmountVal - cartTotal);
 
   const handleCheckout = (e: React.FormEvent) => {
     e.preventDefault();
@@ -113,6 +128,11 @@ export const SalesPOS: React.FC = () => {
       return;
     }
 
+    if (paymentMethod === 'cash' && receivedAmountVal < cartTotal) {
+      alert(`El monto recibido (${formatCurrency(receivedAmountVal)}) es menor al total a cobrar (${formatCurrency(cartTotal)}).`);
+      return;
+    }
+
     // Estructurar items de venta
     const saleItems = cart.map(c => ({
       itemType: c.itemType,
@@ -122,32 +142,68 @@ export const SalesPOS: React.FC = () => {
       totalPrice: c.price * c.quantity,
     }));
 
+    const commissionPercent = (companyInfo.defaultCommission || 35) / 100;
+
     try {
       const sale = addSale(
         {
           branchId: selectedBranchId,
           clientId: selectedClientId,
           employeeId: selectedBarberId,
+          cashierId: selectedBarberId,
           subtotal: cartSubtotal,
           tip: Number(tip),
           total: cartTotal,
           paymentMethod,
-          commissionPaid: cartSubtotal * 0.35, // comisión del 35% por defecto en servicios
+          paymentDetails: {
+            cashAmount: receivedAmountVal,
+            cardAmount: changeGivenVal,
+            transactionId: selectedBarberId,
+          },
+          commissionPaid: cartSubtotal * commissionPercent,
         },
         saleItems
       );
 
-      // Guardar para el ticket visual
-      setPrintedReceipt(sale);
+      // Save for receipt
+      setPrintedReceipt({
+        ...sale,
+        items: saleItems,
+      });
 
       // Reset cart
       setCart([]);
       setTip(0);
+      setCashReceived('');
+      setQrReference('');
       setSelectedClientId('');
       setSelectedBarberId('');
     } catch (err: any) {
       alert(err.message || 'Error al procesar el checkout.');
     }
+  };
+
+  const handleDownloadPDF = () => {
+    const todayStr = getTodayStr();
+    const salesToday = sales.filter(
+      (s) => s.branchId === selectedBranchId && (s.date?.startsWith(todayStr) || s.createdAt?.startsWith(todayStr))
+    );
+
+    generateDailyTransactionsPDF({
+      dateStr: todayStr,
+      companyInfo: {
+        name: companyInfo.name,
+        phone: companyInfo.phone,
+        address: companyInfo.address,
+        currencySymbol: companyInfo.currencySymbol,
+      },
+      branchName: 'Sucursal Principal',
+      activeSession,
+      movements,
+      salesToday: salesToday.length > 0 ? salesToday : sales,
+      clients,
+      employees,
+    });
   };
 
   return (
@@ -159,18 +215,29 @@ export const SalesPOS: React.FC = () => {
             <h3 className="font-bold text-white text-sm">Control de Turno de Caja</h3>
             <span className="text-[10px] text-gray-500 block">Apertura, arqueos y corte final diario.</span>
           </div>
-          {activeSession && (
-            <div className="grid grid-cols-2 gap-4 text-xs">
-              <div>
-                <span className="text-gray-500 block">Fondo de Apertura</span>
-                <span className="font-extrabold text-white">{formatCurrency(activeSession.openingBalance)}</span>
+          <div className="flex flex-wrap items-center gap-3">
+            {activeSession && (
+              <div className="grid grid-cols-2 gap-4 text-xs border-r border-gray-800 pr-4">
+                <div>
+                  <span className="text-gray-500 block">Fondo de Apertura</span>
+                  <span className="font-extrabold text-white">{formatCurrency(activeSession.openingBalance)}</span>
+                </div>
+                <div>
+                  <span className="text-gray-500 block">Balance Esperado Caja</span>
+                  <span className="font-extrabold text-amber-500">{formatCurrency(activeSession.expectedBalance)}</span>
+                </div>
               </div>
-              <div>
-                <span className="text-gray-500 block">Balance Esperado Caja</span>
-                <span className="font-extrabold text-amber-500">{formatCurrency(activeSession.expectedBalance)}</span>
-              </div>
-            </div>
-          )}
+            )}
+            <button
+              type="button"
+              onClick={handleDownloadPDF}
+              className="px-3.5 py-2 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded-lg text-xs font-bold flex items-center gap-2 transition-all cursor-pointer shadow-sm hover:border-amber-500/60"
+              title="Descargar reporte PDF del día"
+            >
+              <FileDown className="w-4 h-4 text-amber-400" />
+              <span>Resumen PDF Diario</span>
+            </button>
+          </div>
         </div>
 
         {!activeSession ? (
@@ -441,31 +508,130 @@ export const SalesPOS: React.FC = () => {
                     </select>
                   </div>
 
-                  {/* METODO DE PAGO Y PROPINA */}
-                  <div className="grid grid-cols-2 gap-3.5">
-                    <div className="space-y-1">
-                      <label className="text-gray-500 font-semibold uppercase tracking-wider text-[9px] block">Método de Pago</label>
-                      <select
-                        value={paymentMethod}
-                        onChange={(e: any) => setPaymentMethod(e.target.value)}
-                        className="w-full bg-[#11121d] border border-gray-800 rounded-lg p-2.5 text-gray-200 focus:outline-none"
+                  {/* METODO DE PAGO Y TIPO DE PAGO */}
+                  <div className="space-y-2 pt-1 border-t border-gray-800/60">
+                    <label className="text-gray-400 font-bold uppercase tracking-wider text-[9px] block">Tipo y Método de Pago *</label>
+                    
+                    <div className="grid grid-cols-4 gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setPaymentMethod('cash')}
+                        className={`p-2 rounded-lg border text-[10px] font-bold flex flex-col items-center gap-1 transition-all cursor-pointer ${
+                          paymentMethod === 'cash'
+                            ? 'bg-amber-500/10 border-amber-500 text-amber-400'
+                            : 'bg-[#11121d] border-gray-800 text-gray-400 hover:text-white'
+                        }`}
                       >
-                        <option value="cash">Efectivo</option>
-                        <option value="card">Tarjeta / Transfer</option>
-                        <option value="mixed">Pago Mixto</option>
-                      </select>
+                        <DollarSign className="w-3.5 h-3.5" />
+                        <span>Efectivo</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setPaymentMethod('transfer')}
+                        className={`p-2 rounded-lg border text-[10px] font-bold flex flex-col items-center gap-1 transition-all cursor-pointer ${
+                          paymentMethod === 'transfer'
+                            ? 'bg-amber-500/10 border-amber-500 text-amber-400'
+                            : 'bg-[#11121d] border-gray-800 text-gray-400 hover:text-white'
+                        }`}
+                      >
+                        <QrCode className="w-3.5 h-3.5" />
+                        <span>Pago QR</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setPaymentMethod('card')}
+                        className={`p-2 rounded-lg border text-[10px] font-bold flex flex-col items-center gap-1 transition-all cursor-pointer ${
+                          paymentMethod === 'card'
+                            ? 'bg-amber-500/10 border-amber-500 text-amber-400'
+                            : 'bg-[#11121d] border-gray-800 text-gray-400 hover:text-white'
+                        }`}
+                      >
+                        <CreditCard className="w-3.5 h-3.5" />
+                        <span>Tarjeta</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setPaymentMethod('mixed')}
+                        className={`p-2 rounded-lg border text-[10px] font-bold flex flex-col items-center gap-1 transition-all cursor-pointer ${
+                          paymentMethod === 'mixed'
+                            ? 'bg-amber-500/10 border-amber-500 text-amber-400'
+                            : 'bg-[#11121d] border-gray-800 text-gray-400 hover:text-white'
+                        }`}
+                      >
+                        <UserCheck className="w-3.5 h-3.5" />
+                        <span>Mixto</span>
+                      </button>
                     </div>
 
-                    <div className="space-y-1">
-                      <label className="text-gray-500 font-semibold uppercase tracking-wider text-[9px] block">Propina Extra ($)</label>
-                      <input
-                        type="number"
-                        placeholder="$ Tip"
-                        value={tip || ''}
-                        onChange={(e) => setTip(Number(e.target.value))}
-                        className="w-full bg-[#11121d] border border-gray-800 rounded-lg p-2.5 text-gray-200 focus:outline-none font-mono"
-                      />
-                    </div>
+                    {/* CAMPOS ESPECIFICOS SEGUN METODO */}
+                    {paymentMethod === 'cash' && (
+                      <div className="bg-[#11121d] border border-gray-800 p-3 rounded-xl space-y-2 mt-2">
+                        <div className="flex justify-between items-center text-[10px]">
+                          <span className="text-gray-400 font-bold uppercase">Monto Recibido ({companyInfo.currencySymbol})</span>
+                          <span className="text-gray-500">Calculador de Vuelto</span>
+                        </div>
+                        
+                        <input
+                          type="number"
+                          placeholder={`Ej. ${cartTotal.toFixed(2)}`}
+                          value={cashReceived}
+                          onChange={(e) => setCashReceived(e.target.value)}
+                          className="w-full bg-[#181a29] border border-gray-700 rounded-lg p-2.5 text-white font-mono font-extrabold text-sm focus:outline-none focus:border-amber-500"
+                        />
+
+                        {/* ACCESOS DIRECTOS A BILLETES */}
+                        <div className="flex gap-1 flex-wrap pt-1">
+                          {[cartTotal, 20, 50, 100, 200].map((amount) => (
+                            <button
+                              key={amount}
+                              type="button"
+                              onClick={() => setCashReceived(String(amount))}
+                              className="px-2 py-1 bg-gray-800 hover:bg-gray-700 text-gray-300 font-mono text-[9.5px] rounded font-bold cursor-pointer transition-all"
+                            >
+                              {amount === cartTotal ? 'Exacto' : `${amount} ${companyInfo.currencySymbol}`}
+                            </button>
+                          ))}
+                        </div>
+
+                        {/* MUESTRA VUELTO EN TIEMPO REAL */}
+                        <div className="flex justify-between items-center pt-2 border-t border-gray-800 text-xs">
+                          <span className="text-gray-400">Vuelto / Cambio a Entregar:</span>
+                          <span className={`font-mono font-black text-sm ${changeGivenVal > 0 ? 'text-emerald-400' : 'text-gray-500'}`}>
+                            {formatCurrency(changeGivenVal)}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
+                    {paymentMethod === 'transfer' && (
+                      <div className="bg-[#11121d] border border-gray-800 p-3 rounded-xl text-center space-y-2 mt-2">
+                        <div className="w-28 h-28 bg-white p-2 rounded-xl mx-auto shadow-md flex items-center justify-center">
+                          <img
+                            src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=BarberiaJosuePagoQR"
+                            alt="QR Pago"
+                            className="w-full h-full object-contain"
+                          />
+                        </div>
+                        <p className="text-[10px] text-gray-400 font-sans">
+                          Muestra este QR al cliente para transferir <strong>{formatCurrency(cartTotal)}</strong> directamente a la cuenta institucional.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* PROPINA */}
+                  <div className="space-y-1">
+                    <label className="text-gray-500 font-semibold uppercase tracking-wider text-[9px] block">Propina Extra ({companyInfo.currencySymbol})</label>
+                    <input
+                      type="number"
+                      placeholder="0.00"
+                      value={tip || ''}
+                      onChange={(e) => setTip(Number(e.target.value))}
+                      className="w-full bg-[#11121d] border border-gray-800 rounded-lg p-2 text-gray-200 focus:outline-none font-mono"
+                    />
                   </div>
 
                   {/* IMPORTES TOTALES */}
@@ -474,21 +640,24 @@ export const SalesPOS: React.FC = () => {
                       <span className="text-gray-500">Subtotal</span>
                       <span className="text-gray-300 font-mono">{formatCurrency(cartSubtotal)}</span>
                     </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-500">Propina</span>
-                      <span className="text-emerald-400 font-mono">+{formatCurrency(tip)}</span>
-                    </div>
+                    {tip > 0 && (
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">Propina</span>
+                        <span className="text-emerald-400 font-mono">+{formatCurrency(tip)}</span>
+                      </div>
+                    )}
                     <div className="flex justify-between text-sm border-t border-gray-800/60 pt-1.5 font-black">
-                      <span className="text-white">TOTAL COBRO</span>
+                      <span className="text-white">TOTAL A COBRAR</span>
                       <span className="text-amber-500 font-mono">{formatCurrency(cartTotal)}</span>
                     </div>
                   </div>
 
                   <button
                     type="submit"
-                    className="w-full bg-amber-500 hover:bg-amber-600 text-black py-3 rounded-lg font-bold tracking-wide transition-all cursor-pointer text-xs shadow-lg shadow-amber-500/10"
+                    className="w-full bg-amber-500 hover:bg-amber-600 text-black py-3.5 rounded-xl font-extrabold tracking-wide transition-all cursor-pointer text-xs shadow-lg shadow-amber-500/10 flex items-center justify-center gap-2"
                   >
-                    Registrar Venta & Cobrar
+                    <DollarSign className="w-4 h-4 stroke-[2.5]" />
+                    <span>Realizar Pago & Generar Comprobante</span>
                   </button>
                 </form>
               )}
@@ -498,80 +667,95 @@ export const SalesPOS: React.FC = () => {
         </div>
       )}
 
-      {/* MODAL / POPUP DE IMPRESIÓN DE TICKET DE COMPRA (POS) */}
-      {printedReceipt && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-[#121420] border border-gray-800 rounded-2xl max-w-md w-full overflow-hidden shadow-2xl relative text-left">
-            <div className="h-1.5 bg-gradient-to-r from-emerald-500 to-emerald-600 w-full" />
-            
-            <div className="p-6 space-y-4">
-              <div className="flex justify-between items-start pb-3 border-b border-gray-800">
-                <div>
-                  <span className="text-[9px] uppercase tracking-widest font-black text-emerald-400 block">Venta Registrada</span>
-                  <span className="text-[10px] text-gray-500 block mt-0.5">Folio: {printedReceipt.id}</span>
-                </div>
-                <button
-                  onClick={() => setPrintedReceipt(null)}
-                  className="p-1 text-gray-500 hover:text-white rounded-lg hover:bg-gray-800 transition-all cursor-pointer"
-                >
-                  ✕
-                </button>
-              </div>
-
-              {/* TICKET MOCK COMPRA */}
-              <div className="space-y-3.5 text-xs text-gray-300">
-                <div>
-                  <span className="text-[10px] text-gray-500 block uppercase font-bold tracking-wider mb-1">Cliente</span>
-                  <span className="font-extrabold text-white">
-                    {clients.find(c => c.id === printedReceipt.clientId)?.fullName}
-                  </span>
-                </div>
-
-                <div>
-                  <span className="text-[10px] text-gray-500 block uppercase font-bold tracking-wider mb-1">Conceptos</span>
-                  <div className="space-y-1 text-gray-400">
-                    {printedReceipt.items.map((line: any, index: number) => (
-                      <div key={index} className="flex justify-between border-b border-gray-900 pb-1">
-                        <span>
-                          {line.quantity} × {services.find(s => s.id === line.itemId)?.name || products.find(p => p.id === line.itemId)?.name || 'Ítem'}
-                        </span>
-                        <span className="font-mono text-gray-200">{formatCurrency(line.totalPrice)}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="border-t border-gray-800 pt-3 space-y-1 font-semibold">
-                  <div className="flex justify-between">
-                    <span className="text-gray-500">Subtotal:</span>
-                    <span className="font-mono text-white">{formatCurrency(printedReceipt.subtotal)}</span>
-                  </div>
-                  {printedReceipt.tip > 0 && (
-                    <div className="flex justify-between">
-                      <span className="text-gray-500">Propina:</span>
-                      <span className="font-mono text-emerald-400">+{formatCurrency(printedReceipt.tip)}</span>
-                    </div>
-                  )}
-                  <div className="flex justify-between border-t border-gray-800/40 pt-1 text-sm font-black text-amber-500">
-                    <span>Monto Cobrado:</span>
-                    <span className="font-mono">{formatCurrency(printedReceipt.total)}</span>
-                  </div>
-                </div>
-
-                <div className="bg-[#141625] p-3 rounded-lg border border-gray-800 text-[11px] leading-relaxed text-gray-400">
-                  ⚡ <strong>Información de Pago:</strong> Recibido vía <strong>{printedReceipt.paymentMethod.toUpperCase()}</strong>. La comisión del 35% ({formatCurrency(printedReceipt.commissionPaid)}) fue asignada automáticamente al barbero en turno.
-                </div>
-              </div>
-
-              <button
-                onClick={() => setPrintedReceipt(null)}
-                className="w-full bg-emerald-500 hover:bg-emerald-600 text-black py-2.5 rounded-lg font-bold transition-all text-xs cursor-pointer shadow-lg shadow-emerald-500/5"
-              >
-                Completar y Volver al POS
-              </button>
-            </div>
+      {/* HISTORIAL DE VENTAS Y COMPROBANTES REGISTRADOS */}
+      <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4 text-slate-800">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+          <div className="flex items-center gap-2">
+            <History className="w-5 h-5 text-indigo-600 stroke-[2.2]" />
+            <h3 className="font-extrabold text-slate-900 text-sm">Historial de Ventas & Comprobantes Generados</h3>
+          </div>
+          <div className="flex items-center gap-2.5">
+            <button
+              type="button"
+              onClick={handleDownloadPDF}
+              className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-lg text-xs font-bold inline-flex items-center gap-1.5 transition-all cursor-pointer shadow-sm"
+            >
+              <FileDown className="w-4 h-4 text-indigo-600" />
+              <span>Descargar Reporte PDF</span>
+            </button>
+            <span className="text-[10px] bg-slate-100 text-slate-600 font-bold px-2.5 py-1 rounded-full">
+              {sales.length} Registro(s)
+            </span>
           </div>
         </div>
+
+        {sales.length === 0 ? (
+          <div className="text-center py-8 text-slate-400 text-xs italic">
+            Aún no hay ventas registradas en esta sucursal. Realiza una venta en el POS para ver su comprobante.
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs border-collapse">
+              <thead>
+                <tr className="border-b border-slate-200 text-[10px] text-slate-500 uppercase font-black tracking-wider bg-slate-50/50">
+                  <th className="py-2.5 px-3">Folio</th>
+                  <th className="py-2.5 px-3">Fecha</th>
+                  <th className="py-2.5 px-3">Cliente</th>
+                  <th className="py-2.5 px-3">Método</th>
+                  <th className="py-2.5 px-3 text-right">Total</th>
+                  <th className="py-2.5 px-3 text-center">Comprobante</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
+                {sales.map((sale) => {
+                  const client = clients.find(c => c.id === sale.clientId);
+                  return (
+                    <tr key={sale.id} className="hover:bg-slate-50 transition-colors">
+                      <td className="py-3 px-3 font-mono font-bold text-slate-900">{sale.id}</td>
+                      <td className="py-3 px-3 font-sans text-slate-500">
+                        {new Date(sale.createdAt || Date.now()).toLocaleDateString('es-BO')}
+                      </td>
+                      <td className="py-3 px-3 font-bold text-slate-800">{client?.fullName || 'Cliente General'}</td>
+                      <td className="py-3 px-3">
+                        <span className="bg-indigo-50 text-indigo-700 font-bold px-2 py-0.5 rounded text-[10px] uppercase">
+                          {sale.paymentMethod}
+                        </span>
+                      </td>
+                      <td className="py-3 px-3 text-right font-mono font-bold text-indigo-600">
+                        {sale.total.toFixed(2)} {companyInfo.currencySymbol}
+                      </td>
+                      <td className="py-3 px-3 text-center">
+                        <button
+                          onClick={() => setViewHistoryReceipt(sale)}
+                          className="px-3 py-1 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-[10px] font-bold inline-flex items-center gap-1.5 transition-all cursor-pointer shadow-sm"
+                        >
+                          <Receipt className="w-3 h-3 text-amber-400" />
+                          <span>Ver Comprobante</span>
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* MODAL / COMPROBANTE OFICIAL DE VENTA (PRINTABLE & WHATSAPP) */}
+      {(printedReceipt || viewHistoryReceipt) && (
+        <ReceiptModal
+          sale={printedReceipt || viewHistoryReceipt}
+          companyInfo={companyInfo}
+          clients={clients}
+          services={services}
+          products={products}
+          employees={employees}
+          onClose={() => {
+            setPrintedReceipt(null);
+            setViewHistoryReceipt(null);
+          }}
+        />
       )}
     </div>
   );

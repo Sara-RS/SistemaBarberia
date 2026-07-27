@@ -51,6 +51,39 @@ export function calculateWaitTime(queueLength: number): number {
 }
 
 /**
+ * Retorna la fecha de hoy en formato YYYY-MM-DD según la hora local.
+ */
+export function getTodayStr(): string {
+  const d = new Date();
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+/**
+ * Retorna una fecha relativa a hoy sumando o restando días (ej. -1 para ayer, +1 para mañana).
+ */
+export function getOffsetDateStr(offsetDays: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() + offsetDays);
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+/**
+ * Retorna el nombre corto del día en español para un string YYYY-MM-DD.
+ */
+export function getDayNameShort(dateStr: string): string {
+  const parts = dateStr.split('-');
+  const date = parts.length === 3 ? new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2])) : new Date(dateStr);
+  const name = new Intl.DateTimeFormat('es-BO', { weekday: 'short' }).format(date);
+  return name.charAt(0).toUpperCase() + name.slice(1).replace('.', '');
+}
+
+/**
  * Helper para generar IDs únicos sencillos.
  */
 export function generateUID(prefix: string = 'id'): string {
