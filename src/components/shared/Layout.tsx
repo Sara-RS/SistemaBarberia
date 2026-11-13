@@ -6,6 +6,8 @@
 import React from 'react';
 import { BaseAppComponent } from '../../context/AppContext';
 import { DateTimeHelper } from '../../utils/helpers';
+import { BarbershopChatbot } from './BarbershopChatbot';
+import { AdminLoginModal } from './AdminLoginModal';
 import {
   Scissors,
   Calendar,
@@ -27,6 +29,9 @@ import {
   Truck,
   Sun,
   Moon,
+  LogIn,
+  LogOut,
+  Lock,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -39,6 +44,7 @@ interface LayoutProps {
 interface LayoutState {
   mobileMenuOpen: boolean;
   notificationsOpen: boolean;
+  loginModalOpen: boolean;
   currentTime: string;
 }
 
@@ -70,6 +76,7 @@ export class Layout extends BaseAppComponent<LayoutProps, LayoutState> {
     this.state = {
       mobileMenuOpen: false,
       notificationsOpen: false,
+      loginModalOpen: false,
       currentTime: DateTimeHelper.getBoliviaClockString(),
     };
   }
@@ -90,11 +97,21 @@ export class Layout extends BaseAppComponent<LayoutProps, LayoutState> {
     this.setState({ currentTime: DateTimeHelper.getBoliviaClockString() });
   };
 
-  private toggleRole = (): void => {
-    const { currentRole, setCurrentRole } = this.app;
+  private handleSwitchAuthenticatedRole = (): void => {
+    const { currentRole, setCurrentRole, isAdminAuthenticated } = this.app;
+    if (!isAdminAuthenticated) {
+      this.setState({ loginModalOpen: true });
+      return;
+    }
     const nextRole = currentRole === 'client' ? 'admin' : 'client';
     setCurrentRole(nextRole);
     this.props.setActiveTab(nextRole === 'client' ? 'booking' : 'dashboard');
+  };
+
+  private handleLogout = (): void => {
+    this.app.logoutAdmin();
+    this.props.setActiveTab('booking');
+    this.setState({ mobileMenuOpen: false, notificationsOpen: false });
   };
 
   private getActiveTabLabel(): string {
@@ -107,6 +124,7 @@ export class Layout extends BaseAppComponent<LayoutProps, LayoutState> {
     const { activeTab, setActiveTab, children } = this.props;
     const {
       currentRole,
+      isAdminAuthenticated,
       selectedBranchId,
       setSelectedBranchId,
       branches,
@@ -115,7 +133,7 @@ export class Layout extends BaseAppComponent<LayoutProps, LayoutState> {
       theme,
       toggleTheme,
     } = this.app;
-    const { mobileMenuOpen, notificationsOpen, currentTime } = this.state;
+    const { mobileMenuOpen, notificationsOpen, loginModalOpen, currentTime } = this.state;
 
     const currentMenuItems = currentRole === 'client' ? this.clientMenuItems : this.adminMenuItems;
     const activeBranch = branches.find(b => b.id === selectedBranchId) || branches[0];
@@ -198,38 +216,82 @@ export class Layout extends BaseAppComponent<LayoutProps, LayoutState> {
             })}
           </nav>
 
-          {/* PERFIL / QUICK ROLE SWITCHER */}
-          <div className="p-4 border-t border-slate-200 dark:border-[#1E3354] bg-slate-50/70 dark:bg-[#0A1526]">
-            <div className="mb-3 p-2.5 rounded-lg bg-white dark:bg-[#12233B] border border-slate-200 dark:border-[#243D63] flex items-center justify-between shadow-xs">
-              <div className="flex items-center gap-2">
-                <Monitor className="w-4 h-4 text-navy-700 dark:text-navy-300 shrink-0" />
-                <div>
-                  <span className="text-[10px] text-slate-400 dark:text-slate-400 block leading-none">Vista Activa</span>
-                  <span className="text-xs font-bold text-slate-800 dark:text-slate-100 uppercase">
-                    {currentRole === 'client' ? 'Cliente' : 'Administración'}
-                  </span>
+          {/* PERFIL / ACCESO ADMINISTRADOR */}
+          <div className="p-4 border-t border-slate-200 dark:border-[#1E3354] bg-slate-50/70 dark:bg-[#0A1526] space-y-3">
+            {isAdminAuthenticated ? (
+              <>
+                <div className="p-2.5 rounded-lg bg-white dark:bg-[#12233B] border border-slate-200 dark:border-[#243D63] flex items-center justify-between shadow-xs gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Monitor className="w-4 h-4 text-navy-700 dark:text-navy-300 shrink-0" />
+                    <div className="min-w-0">
+                      <span className="text-[10px] text-slate-400 dark:text-slate-400 block leading-none">
+                        Vista Activa
+                      </span>
+                      <span className="text-xs font-bold text-slate-800 dark:text-slate-100 uppercase truncate block">
+                        {currentRole === 'client' ? 'Cliente' : 'Administración'}
+                      </span>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={this.handleSwitchAuthenticatedRole}
+                    className="px-2.5 py-1 text-[10px] bg-navy-50 dark:bg-navy-900/70 hover:bg-navy-100 dark:hover:bg-navy-800 text-navy-800 dark:text-navy-200 rounded border border-navy-200 dark:border-navy-600/60 font-bold tracking-wide cursor-pointer transition-all whitespace-nowrap shrink-0"
+                  >
+                    {currentRole === 'client' ? 'Panel Admin' : 'Ver Cliente'}
+                  </button>
                 </div>
+
+                <div className="flex items-center justify-between gap-2 px-1">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="w-8 h-8 rounded-full bg-navy-800 dark:bg-navy-600 flex items-center justify-center font-bold text-white text-xs shrink-0">
+                      AD
+                    </div>
+                    <div className="overflow-hidden">
+                      <span className="text-xs font-semibold text-slate-800 dark:text-slate-100 block truncate">
+                        Administrador
+                      </span>
+                      <span className="text-[10px] text-slate-500 dark:text-slate-400 block truncate font-mono">
+                        adminbarber
+                      </span>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={this.handleLogout}
+                    title="Cerrar sesión de administrador"
+                    aria-label="Cerrar sesión de administrador"
+                    className="p-2 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/50 border border-transparent hover:border-rose-200 dark:hover:border-rose-800/50 rounded-lg transition-colors cursor-pointer shrink-0"
+                  >
+                    <LogOut className="w-4 h-4" />
+                  </button>
+                </div>
+              </>
+            ) : (
+              <div className="space-y-2.5">
+                <div className="flex items-center gap-2.5 px-1">
+                  <div className="w-8 h-8 rounded-full bg-navy-800 dark:bg-navy-600 flex items-center justify-center font-bold text-white text-xs shrink-0">
+                    CL
+                  </div>
+                  <div className="overflow-hidden">
+                    <span className="text-xs font-semibold text-slate-800 dark:text-slate-100 block truncate">
+                      Portal de Clientes
+                    </span>
+                    <span className="text-[10px] text-slate-500 dark:text-slate-400 block truncate">
+                      Acceso público · Reservas
+                    </span>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => this.setState({ loginModalOpen: true })}
+                  className="w-full py-2.5 px-3 bg-navy-800 hover:bg-navy-700 dark:bg-navy-600 dark:hover:bg-navy-500 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer whitespace-nowrap"
+                >
+                  <LogIn className="w-4 h-4 shrink-0" />
+                  <span>Login Administrador</span>
+                </button>
               </div>
-              <button
-                onClick={this.toggleRole}
-                className="px-2.5 py-1 text-[10px] bg-navy-50 dark:bg-navy-900/70 hover:bg-navy-100 dark:hover:bg-navy-800 text-navy-800 dark:text-navy-200 rounded border border-navy-200 dark:border-navy-600/60 font-bold tracking-wide cursor-pointer transition-all"
-              >
-                Cambiar
-              </button>
-            </div>
-            <div className="flex items-center gap-3 px-1">
-              <div className="w-9 h-9 rounded-full bg-navy-800 dark:bg-navy-600 flex items-center justify-center font-bold text-white text-xs shrink-0">
-                {currentRole === 'client' ? 'CL' : 'AD'}
-              </div>
-              <div className="overflow-hidden">
-                <span className="text-xs font-semibold text-slate-800 dark:text-slate-100 block truncate">
-                  {currentRole === 'client' ? 'Juan Pérez' : 'Carlos Gómez'}
-                </span>
-                <span className="text-[10px] text-slate-500 dark:text-slate-400 block truncate">
-                  {currentRole === 'client' ? 'juan.perez@example.com' : 'carlos@barberia.com'}
-                </span>
-              </div>
-            </div>
+            )}
           </div>
         </aside>
 
@@ -258,12 +320,24 @@ export class Layout extends BaseAppComponent<LayoutProps, LayoutState> {
             >
               {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
             </button>
-            <button
-              onClick={this.toggleRole}
-              className="px-2 py-1 text-[9px] bg-navy-50 dark:bg-navy-900/70 text-navy-800 dark:text-navy-200 rounded border border-navy-200 dark:border-navy-600/60 font-bold uppercase transition-all"
-            >
-              {currentRole === 'client' ? 'Cliente ⇆' : 'Admin ⇆'}
-            </button>
+            {isAdminAuthenticated ? (
+              <button
+                type="button"
+                onClick={this.handleSwitchAuthenticatedRole}
+                className="px-2.5 py-1.5 text-[10px] bg-navy-50 dark:bg-navy-900/70 text-navy-800 dark:text-navy-200 rounded-lg border border-navy-200 dark:border-navy-600/60 font-bold uppercase transition-all whitespace-nowrap cursor-pointer"
+              >
+                {currentRole === 'client' ? 'Admin ⇆' : 'Cliente ⇆'}
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => this.setState({ loginModalOpen: true })}
+                className="px-2.5 py-1.5 text-[10px] bg-navy-800 dark:bg-navy-600 text-white rounded-lg font-bold flex items-center gap-1 transition-all whitespace-nowrap cursor-pointer"
+              >
+                <Lock className="w-3 h-3" />
+                <span>Login</span>
+              </button>
+            )}
             <button
               onClick={() => this.setState({ mobileMenuOpen: !mobileMenuOpen })}
               className="p-1.5 text-slate-600 dark:text-slate-300 hover:text-navy-800 dark:hover:text-white focus:outline-none"
@@ -326,6 +400,28 @@ export class Layout extends BaseAppComponent<LayoutProps, LayoutState> {
                     </button>
                   );
                 })}
+              </div>
+
+              <div className="pt-2 border-t border-slate-200 dark:border-[#1E3354]">
+                {isAdminAuthenticated ? (
+                  <button
+                    type="button"
+                    onClick={this.handleLogout}
+                    className="w-full py-2.5 px-3 bg-rose-50 dark:bg-rose-950/50 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800/60 rounded-xl font-bold text-xs flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    <LogOut className="w-4 h-4" />
+                    <span>Cerrar Sesión Administrador</span>
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => this.setState({ loginModalOpen: true, mobileMenuOpen: false })}
+                    className="w-full py-2.5 px-3 bg-navy-800 dark:bg-navy-600 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    <LogIn className="w-4 h-4" />
+                    <span>Login Administrador</span>
+                  </button>
+                )}
               </div>
             </motion.div>
           )}
@@ -402,69 +498,71 @@ export class Layout extends BaseAppComponent<LayoutProps, LayoutState> {
                 </button>
               </div>
 
-              {/* Campana de Notificaciones */}
-              <div className="relative">
-                <button
-                  onClick={() => this.setState({ notificationsOpen: !notificationsOpen })}
-                  className="p-1.5 text-slate-500 dark:text-slate-300 hover:text-navy-800 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-[#132540] rounded-lg transition-all relative cursor-pointer"
-                  aria-label="Notificaciones"
-                >
-                  <Bell className="w-4 h-4" />
-                  <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-navy-700 dark:bg-navy-400" />
-                </button>
+              {/* Campana de Notificaciones (solo administración) */}
+              {currentRole !== 'client' && (
+                <div className="relative">
+                  <button
+                    onClick={() => this.setState({ notificationsOpen: !notificationsOpen })}
+                    className="p-1.5 text-slate-500 dark:text-slate-300 hover:text-navy-800 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-[#132540] rounded-lg transition-all relative cursor-pointer"
+                    aria-label="Notificaciones"
+                  >
+                    <Bell className="w-4 h-4" />
+                    <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-navy-700 dark:bg-navy-400" />
+                  </button>
 
-                <AnimatePresence>
-                  {notificationsOpen && (
-                    <>
-                      <div
-                        className="fixed inset-0 z-40"
-                        onClick={() => this.setState({ notificationsOpen: false })}
-                      />
-                      <motion.div
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: 10 }}
-                        className="absolute right-0 mt-2.5 w-80 bg-white dark:bg-[#0D1A2D] border border-slate-200 dark:border-[#243D63] rounded-xl shadow-2xl z-50 p-3"
-                      >
-                        <div className="flex justify-between items-center pb-2 mb-2 border-b border-slate-100 dark:border-[#1E3354]">
-                          <span className="text-xs font-bold text-slate-900 dark:text-white">Notificaciones de Hoy</span>
-                          <span
-                            onClick={() => this.setState({ notificationsOpen: false })}
-                            className="text-[10px] text-navy-700 dark:text-navy-300 font-bold uppercase cursor-pointer hover:underline"
-                          >
-                            Marcar leído
-                          </span>
-                        </div>
-                        <div className="space-y-2.5 max-h-60 overflow-y-auto">
-                          <div className="text-xs p-2.5 rounded-lg bg-slate-50 dark:bg-[#12233B] border border-slate-200 dark:border-[#1E3354]">
-                            <div className="flex justify-between items-start mb-0.5">
-                              <span className="font-bold text-slate-800 dark:text-slate-100">Nueva Cita Walk-In</span>
-                              <span className="text-[10px] text-slate-400">Hace 5 min</span>
-                            </div>
-                            <p className="text-slate-600 dark:text-slate-300 text-[11px]">
-                              Roberto Mendoza ha sido agregado a la fila de espera.
-                            </p>
+                  <AnimatePresence>
+                    {notificationsOpen && (
+                      <>
+                        <div
+                          className="fixed inset-0 z-40"
+                          onClick={() => this.setState({ notificationsOpen: false })}
+                        />
+                        <motion.div
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: 10 }}
+                          className="absolute right-0 mt-2.5 w-80 bg-white dark:bg-[#0D1A2D] border border-slate-200 dark:border-[#243D63] rounded-xl shadow-2xl z-50 p-3"
+                        >
+                          <div className="flex justify-between items-center pb-2 mb-2 border-b border-slate-100 dark:border-[#1E3354]">
+                            <span className="text-xs font-bold text-slate-900 dark:text-white">Notificaciones de Hoy</span>
+                            <span
+                              onClick={() => this.setState({ notificationsOpen: false })}
+                              className="text-[10px] text-navy-700 dark:text-navy-300 font-bold uppercase cursor-pointer hover:underline"
+                            >
+                              Marcar leído
+                            </span>
                           </div>
-                          <div className="text-xs p-2.5 rounded-lg bg-rose-50/70 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800/50">
-                            <div className="flex justify-between items-start mb-0.5">
-                              <span className="font-bold text-rose-700 dark:text-rose-400">Stock Crítico</span>
-                              <span className="text-[10px] text-slate-400">Hace 1 hora</span>
+                          <div className="space-y-2.5 max-h-60 overflow-y-auto">
+                            <div className="text-xs p-2.5 rounded-lg bg-slate-50 dark:bg-[#12233B] border border-slate-200 dark:border-[#1E3354]">
+                              <div className="flex justify-between items-start mb-0.5">
+                                <span className="font-bold text-slate-800 dark:text-slate-100">Nueva Cita Walk-In</span>
+                                <span className="text-[10px] text-slate-400">Hace 5 min</span>
+                              </div>
+                              <p className="text-slate-600 dark:text-slate-300 text-[11px]">
+                                Roberto Mendoza ha sido agregado a la fila de espera.
+                              </p>
                             </div>
-                            <p className="text-rose-600 dark:text-rose-300 text-[11px]">
-                              "Aceite de Barba Premium Oud" queda solo 3 unidades en stock.
-                            </p>
+                            <div className="text-xs p-2.5 rounded-lg bg-rose-50/70 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800/50">
+                              <div className="flex justify-between items-start mb-0.5">
+                                <span className="font-bold text-rose-700 dark:text-rose-400">Stock Crítico</span>
+                                <span className="text-[10px] text-slate-400">Hace 1 hora</span>
+                              </div>
+                              <p className="text-rose-600 dark:text-rose-300 text-[11px]">
+                                "Aceite de Barba Premium Oud" queda solo 3 unidades en stock.
+                              </p>
+                            </div>
                           </div>
-                        </div>
-                      </motion.div>
-                    </>
-                  )}
-                </AnimatePresence>
-              </div>
+                        </motion.div>
+                      </>
+                    )}
+                  </AnimatePresence>
+                </div>
+              )}
             </div>
           </header>
 
           {/* WORKSPACE CONTENT VIEWPORT */}
-          <div className="flex-1 p-4 md:p-8 overflow-y-auto relative">
+          <div className="flex-1 p-4 md:p-8 pb-20 md:pb-20 overflow-y-auto relative">
             <AnimatePresence mode="wait">
               <motion.div
                 key={`${currentRole}-${activeTab}`}
@@ -479,6 +577,16 @@ export class Layout extends BaseAppComponent<LayoutProps, LayoutState> {
             </AnimatePresence>
           </div>
         </main>
+
+        {/* MODAL DE LOGIN ADMINISTRADOR */}
+        <AdminLoginModal
+          isOpen={loginModalOpen}
+          onClose={() => this.setState({ loginModalOpen: false })}
+          onLoginSuccess={() => setActiveTab('dashboard')}
+        />
+
+        {/* CHATBOT DE ATENCIÓN Y CONSULTAS */}
+        <BarbershopChatbot onNavigateToBooking={() => setActiveTab('booking')} />
       </div>
     );
   }

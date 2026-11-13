@@ -6,6 +6,7 @@
 import React, { createContext } from 'react';
 import { mockDb } from '../db/mockDb';
 import { ThemeMode, themeManager } from '../services/themeManager';
+import { authManager, AuthResult } from '../services/authManager';
 import {
   UserRole,
   Branch,
@@ -26,6 +27,9 @@ import {
 export interface AppContextProps {
   currentRole: UserRole;
   setCurrentRole: (role: UserRole) => void;
+  isAdminAuthenticated: boolean;
+  loginAdmin: (username: string, password: string) => AuthResult;
+  logoutAdmin: () => void;
   selectedBranchId: string;
   setSelectedBranchId: (id: string) => void;
   theme: ThemeMode;
@@ -89,6 +93,7 @@ interface AppProviderProps {
 
 interface AppProviderState {
   currentRole: UserRole;
+  isAdminAuthenticated: boolean;
   selectedBranchId: string;
   theme: ThemeMode;
   companyInfo: CompanyInfo;
@@ -113,9 +118,11 @@ export class AppProvider extends React.Component<AppProviderProps, AppProviderSt
     super(props);
     const defaultBranchId = 'branch-coyoacan';
     const initialTheme = themeManager.loadTheme();
+    const initialAuth = authManager.isAuthenticated();
     themeManager.applyTheme(initialTheme);
     this.state = {
-      currentRole: 'admin',
+      currentRole: initialAuth ? 'admin' : 'client',
+      isAdminAuthenticated: initialAuth,
       selectedBranchId: defaultBranchId,
       theme: initialTheme,
       companyInfo: mockDb.getCompanyInfo(),
@@ -154,7 +161,29 @@ export class AppProvider extends React.Component<AppProviderProps, AppProviderSt
   };
 
   private setCurrentRole = (role: UserRole): void => {
+    if (role === 'admin' && !this.state.isAdminAuthenticated) {
+      return;
+    }
     this.setState({ currentRole: role });
+  };
+
+  private loginAdmin = (username: string, password: string): AuthResult => {
+    const result = authManager.login(username, password);
+    if (result.success) {
+      this.setState({
+        isAdminAuthenticated: true,
+        currentRole: 'admin',
+      });
+    }
+    return result;
+  };
+
+  private logoutAdmin = (): void => {
+    authManager.logout();
+    this.setState({
+      isAdminAuthenticated: false,
+      currentRole: 'client',
+    });
   };
 
   private setSelectedBranchId = (id: string): void => {
@@ -334,6 +363,9 @@ export class AppProvider extends React.Component<AppProviderProps, AppProviderSt
     const contextValue: AppContextProps = {
       currentRole: this.state.currentRole,
       setCurrentRole: this.setCurrentRole,
+      isAdminAuthenticated: this.state.isAdminAuthenticated,
+      loginAdmin: this.loginAdmin,
+      logoutAdmin: this.logoutAdmin,
       selectedBranchId: this.state.selectedBranchId,
       setSelectedBranchId: this.setSelectedBranchId,
       theme: this.state.theme,

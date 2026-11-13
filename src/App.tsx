@@ -4,7 +4,7 @@
  */
 
 import React from 'react';
-import { AppProvider, BaseAppComponent } from './context/AppContext';
+import { AppProvider, AppContextProps, BaseAppComponent } from './context/AppContext';
 import { Layout } from './components/shared/Layout';
 
 // Client-facing Views
@@ -30,10 +30,11 @@ interface WorkspaceSwitcherState {
 }
 
 export class WorkspaceSwitcher extends BaseAppComponent<{}, WorkspaceSwitcherState> {
-  constructor(props: {}) {
-    super(props);
+  constructor(props: {}, context: AppContextProps) {
+    super(props, context);
+    const isAdmin = Boolean(context?.isAdminAuthenticated && context?.currentRole === 'admin');
     this.state = {
-      activeTab: 'dashboard',
+      activeTab: isAdmin ? 'dashboard' : 'booking',
     };
   }
 
@@ -43,6 +44,20 @@ export class WorkspaceSwitcher extends BaseAppComponent<{}, WorkspaceSwitcherSta
 
   private renderActiveView(): React.ReactNode {
     const { activeTab } = this.state;
+    const { currentRole, isAdminAuthenticated } = this.app;
+
+    if (!isAdminAuthenticated || currentRole === 'client') {
+      switch (activeTab) {
+        case 'client-history':
+          return <ClientHistory />;
+        case 'branch-info':
+          return <BranchInfo />;
+        case 'booking':
+        default:
+          return <ClientBooking />;
+      }
+    }
+
     switch (activeTab) {
       case 'booking':
         return <ClientBooking />;
