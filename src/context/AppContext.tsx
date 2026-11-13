@@ -3,8 +3,9 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext } from 'react';
 import { mockDb } from '../db/mockDb';
+import { ThemeMode, themeManager } from '../services/themeManager';
 import {
   UserRole,
   Branch,
@@ -15,17 +16,21 @@ import {
   QueueItem,
   Product,
   Provider,
+  Purchase,
+  PurchaseItem,
   Sale,
   CashSession,
   CompanyInfo,
 } from '../types';
 
-interface AppContextProps {
+export interface AppContextProps {
   currentRole: UserRole;
   setCurrentRole: (role: UserRole) => void;
   selectedBranchId: string;
   setSelectedBranchId: (id: string) => void;
-  
+  theme: ThemeMode;
+  toggleTheme: () => void;
+
   // Data vectors (reactive state)
   companyInfo: CompanyInfo;
   branches: Branch[];
@@ -36,6 +41,7 @@ interface AppContextProps {
   queueItems: QueueItem[];
   products: Product[];
   providers: Provider[];
+  purchases: Purchase[];
   sales: Sale[];
   activeSession: CashSession | undefined;
 
@@ -52,7 +58,7 @@ interface AppContextProps {
   openCash: (openingBalance: number) => void;
   closeCash: (closingBalance: number, notes?: string) => void;
   addCashMovement: (type: 'income' | 'expense', amount: number, reason: string) => void;
-  addProduct: (prod: Omit<Product, 'id' | 'createdAt'>) => void;
+  addProduct: (prod: Omit<Product, 'id' | 'createdAt'>) => Product;
   updateProduct: (id: string, updates: Partial<Product>) => void;
   deleteProduct: (id: string) => void;
   adjustProductStock: (productId: string, qty: number, reason: string) => void;
@@ -61,111 +67,179 @@ interface AppContextProps {
   addEmployee: (emp: Omit<Employee, 'id' | 'createdAt'>) => void;
   updateEmployee: (id: string, updates: Partial<Employee>) => void;
   deleteEmployee: (id: string) => void;
+  addProvider: (prov: Omit<Provider, 'id' | 'createdAt'>) => void;
+  updateProvider: (id: string, updates: Partial<Provider>) => void;
+  deleteProvider: (id: string) => void;
+  addPurchase: (
+    pur: Omit<Purchase, 'id' | 'createdAt' | 'total'>,
+    items: (Omit<PurchaseItem, 'id' | 'purchaseId'> & {
+      profitMargin?: number;
+      salePrice?: number;
+      updateSalePrice?: boolean;
+    })[]
+  ) => Purchase;
+  deletePurchase: (id: string) => void;
 }
 
-const AppContext = createContext<AppContextProps | undefined>(undefined);
+export const AppContext = createContext<AppContextProps | undefined>(undefined);
 
-export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // Configuración de roles y sucursales por default para la experiencia fluida
-  const [currentRole, setCurrentRole] = useState<UserRole>('admin');
-  const [selectedBranchId, setSelectedBranchId] = useState<string>('branch-coyoacan');
+interface AppProviderProps {
+  children: React.ReactNode;
+}
 
-  // React state vectors
-  const [companyInfo, setCompanyInfo] = useState<CompanyInfo>(mockDb.getCompanyInfo());
-  const [branches, setBranches] = useState<Branch[]>([]);
-  const [employees, setEmployees] = useState<Employee[]>([]);
-  const [services, setServices] = useState<Service[]>([]);
-  const [clients, setClients] = useState<Client[]>([]);
-  const [appointments, setAppointments] = useState<Appointment[]>([]);
-  const [queueItems, setQueueItems] = useState<QueueItem[]>([]);
-  const [products, setProducts] = useState<Product[]>([]);
-  const [providers, setProviders] = useState<Provider[]>([]);
-  const [sales, setSales] = useState<Sale[]>([]);
-  const [activeSession, setActiveSession] = useState<CashSession | undefined>(undefined);
+interface AppProviderState {
+  currentRole: UserRole;
+  selectedBranchId: string;
+  theme: ThemeMode;
+  companyInfo: CompanyInfo;
+  branches: Branch[];
+  employees: Employee[];
+  services: Service[];
+  clients: Client[];
+  appointments: Appointment[];
+  queueItems: QueueItem[];
+  products: Product[];
+  providers: Provider[];
+  purchases: Purchase[];
+  sales: Sale[];
+  activeSession: CashSession | undefined;
+}
 
-  // Cargar estado inicial desde el mock DB
-  const refreshAll = () => {
-    setCompanyInfo(mockDb.getCompanyInfo());
-    setBranches(mockDb.getBranches());
-    setEmployees(mockDb.getEmployees());
-    setServices(mockDb.getServices());
-    setClients(mockDb.getClients());
-    setAppointments(mockDb.getAppointments());
-    setQueueItems(mockDb.getQueueItems(selectedBranchId));
-    setProducts(mockDb.getProducts(selectedBranchId));
-    setProviders(mockDb.getProviders());
-    setSales(mockDb.getSales(selectedBranchId));
-    setActiveSession(mockDb.getActiveCashSession(selectedBranchId));
+/**
+ * Proveedor de estado global implementado como Clase React orientada a objetos.
+ */
+export class AppProvider extends React.Component<AppProviderProps, AppProviderState> {
+  constructor(props: AppProviderProps) {
+    super(props);
+    const defaultBranchId = 'branch-coyoacan';
+    const initialTheme = themeManager.loadTheme();
+    themeManager.applyTheme(initialTheme);
+    this.state = {
+      currentRole: 'admin',
+      selectedBranchId: defaultBranchId,
+      theme: initialTheme,
+      companyInfo: mockDb.getCompanyInfo(),
+      branches: mockDb.getBranches(),
+      employees: mockDb.getEmployees(),
+      services: mockDb.getServices(),
+      clients: mockDb.getClients(),
+      appointments: mockDb.getAppointments(),
+      queueItems: mockDb.getQueueItems(defaultBranchId),
+      products: mockDb.getProducts(defaultBranchId),
+      providers: mockDb.getProviders(),
+      purchases: mockDb.getPurchases(defaultBranchId),
+      sales: mockDb.getSales(defaultBranchId),
+      activeSession: mockDb.getActiveCashSession(defaultBranchId),
+    };
+  }
+
+  public componentDidMount(): void {
+    themeManager.applyTheme(this.state.theme);
+    this.refreshAll();
+  }
+
+  public componentDidUpdate(_prevProps: AppProviderProps, prevState: AppProviderState): void {
+    if (prevState.theme !== this.state.theme) {
+      themeManager.applyTheme(this.state.theme);
+    }
+    if (prevState.selectedBranchId !== this.state.selectedBranchId) {
+      this.refreshAll(this.state.selectedBranchId);
+    }
+  }
+
+  private toggleTheme = (): void => {
+    this.setState(prevState => ({
+      theme: themeManager.getToggledTheme(prevState.theme),
+    }));
   };
 
-  useEffect(() => {
-    refreshAll();
-  }, [selectedBranchId]);
+  private setCurrentRole = (role: UserRole): void => {
+    this.setState({ currentRole: role });
+  };
 
-  // --- ACTIONS WITH MOCK DB SYNCHRONIZATION ---
+  private setSelectedBranchId = (id: string): void => {
+    this.setState({ selectedBranchId: id });
+  };
 
-  const updateCompanyInfo = (updates: Partial<CompanyInfo>) => {
+  private refreshAll = (branchId: string = this.state.selectedBranchId): void => {
+    this.setState({
+      companyInfo: mockDb.getCompanyInfo(),
+      branches: mockDb.getBranches(),
+      employees: mockDb.getEmployees(),
+      services: mockDb.getServices(),
+      clients: mockDb.getClients(),
+      appointments: mockDb.getAppointments(),
+      queueItems: mockDb.getQueueItems(branchId),
+      products: mockDb.getProducts(branchId),
+      providers: mockDb.getProviders(),
+      purchases: mockDb.getPurchases(branchId),
+      sales: mockDb.getSales(branchId),
+      activeSession: mockDb.getActiveCashSession(branchId),
+    });
+  };
+
+  private updateCompanyInfo = (updates: Partial<CompanyInfo>): void => {
     mockDb.updateCompanyInfo(updates);
-    refreshAll();
+    this.refreshAll();
   };
 
-  const addClient = (client: Omit<Client, 'id' | 'createdAt'>) => {
+  private addClient = (client: Omit<Client, 'id' | 'createdAt'>): Client => {
     const res = mockDb.createClient(client);
-    refreshAll();
+    this.refreshAll();
     return res;
   };
 
-  const addAppointment = (apt: Omit<Appointment, 'id' | 'createdAt'>) => {
+  private addAppointment = (apt: Omit<Appointment, 'id' | 'createdAt'>): Appointment => {
     const res = mockDb.createAppointment(apt);
-    refreshAll();
+    this.refreshAll();
     return res;
   };
 
-  const updateAptStatus = (id: string, status: any) => {
+  private updateAptStatus = (id: string, status: any): void => {
     mockDb.updateAppointmentStatus(id, status);
-    refreshAll();
+    this.refreshAll();
   };
 
-  const updateApt = (id: string, updates: Partial<Appointment>) => {
+  private updateApt = (id: string, updates: Partial<Appointment>): void => {
     mockDb.updateAppointment(id, updates);
-    refreshAll();
+    this.refreshAll();
   };
 
-  const addToQueue = (item: Omit<QueueItem, 'id' | 'joinedAt' | 'status'>) => {
+  private addToQueue = (item: Omit<QueueItem, 'id' | 'joinedAt' | 'status'>): void => {
     mockDb.addToQueue(item);
-    refreshAll();
+    this.refreshAll();
   };
 
-  const updateQueueStatus = (id: string, status: any, employeeId?: string) => {
+  private updateQueueStatus = (id: string, status: any, employeeId?: string): void => {
     mockDb.updateQueueStatus(id, status, employeeId);
-    refreshAll();
+    this.refreshAll();
   };
 
-  const addSale = (sale: Omit<Sale, 'id' | 'createdAt' | 'date'>, items: any[]) => {
+  private addSale = (sale: Omit<Sale, 'id' | 'createdAt' | 'date'>, items: any[]): Sale => {
     const res = mockDb.createSale(sale, items);
-    refreshAll();
+    this.refreshAll();
     return res;
   };
 
-  const openCash = (openingBalance: number) => {
+  private openCash = (openingBalance: number): void => {
     mockDb.openCashSession({
-      branchId: selectedBranchId,
-      employeeId: 'emp-sofia', // Sofía maneja caja por default en la demo
+      branchId: this.state.selectedBranchId,
+      employeeId: 'emp-sofia',
       openingBalance,
     });
-    refreshAll();
+    this.refreshAll();
   };
 
-  const closeCash = (closingBalance: number, notes?: string) => {
-    const session = mockDb.getActiveCashSession(selectedBranchId);
+  private closeCash = (closingBalance: number, notes?: string): void => {
+    const session = mockDb.getActiveCashSession(this.state.selectedBranchId);
     if (session) {
       mockDb.closeCashSession(session.id, closingBalance, notes);
     }
-    refreshAll();
+    this.refreshAll();
   };
 
-  const addCashMovement = (type: 'income' | 'expense', amount: number, reason: string) => {
-    const session = mockDb.getActiveCashSession(selectedBranchId);
+  private addCashMovement = (type: 'income' | 'expense', amount: number, reason: string): void => {
+    const session = mockDb.getActiveCashSession(this.state.selectedBranchId);
     if (session) {
       mockDb.createCashMovement({
         sessionId: session.id,
@@ -174,104 +248,156 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         reason,
       });
     }
-    refreshAll();
+    this.refreshAll();
   };
 
-  const addProduct = (prod: Omit<Product, 'id' | 'createdAt'>) => {
-    mockDb.createProduct({ ...prod, branchId: selectedBranchId });
-    refreshAll();
+  private addProduct = (prod: Omit<Product, 'id' | 'createdAt'>): Product => {
+    const created = mockDb.createProduct({ ...prod, branchId: this.state.selectedBranchId });
+    this.refreshAll();
+    return created;
   };
 
-  const updateProduct = (id: string, updates: Partial<Product>) => {
+  private updateProduct = (id: string, updates: Partial<Product>): void => {
     mockDb.updateProduct(id, updates);
-    refreshAll();
+    this.refreshAll();
   };
 
-  const deleteProduct = (id: string) => {
+  private deleteProduct = (id: string): void => {
     mockDb.deleteProduct(id);
-    refreshAll();
+    this.refreshAll();
   };
 
-  const adjustProductStock = (productId: string, qty: number, reason: string) => {
-    mockDb.adjustStock(selectedBranchId, productId, qty, reason, 'emp-carlos');
-    refreshAll();
+  private adjustProductStock = (productId: string, qty: number, reason: string): void => {
+    mockDb.adjustStock(this.state.selectedBranchId, productId, qty, reason, 'emp-carlos');
+    this.refreshAll();
   };
 
-  const addService = (ser: Omit<Service, 'id' | 'createdAt'>) => {
+  private addService = (ser: Omit<Service, 'id' | 'createdAt'>): void => {
     mockDb.createService({ ...ser, tenantId: 'tenant-1' });
-    refreshAll();
+    this.refreshAll();
   };
 
-  const updateService = (id: string, updates: Partial<Service>) => {
+  private updateService = (id: string, updates: Partial<Service>): void => {
     mockDb.updateService(id, updates);
-    refreshAll();
+    this.refreshAll();
   };
 
-  const addEmployee = (emp: Omit<Employee, 'id' | 'createdAt'>) => {
-    mockDb.createEmployee({ ...emp, branchId: selectedBranchId });
-    refreshAll();
+  private addEmployee = (emp: Omit<Employee, 'id' | 'createdAt'>): void => {
+    mockDb.createEmployee({ ...emp, branchId: this.state.selectedBranchId });
+    this.refreshAll();
   };
 
-  const updateEmployee = (id: string, updates: Partial<Employee>) => {
+  private updateEmployee = (id: string, updates: Partial<Employee>): void => {
     mockDb.updateEmployee(id, updates);
-    refreshAll();
+    this.refreshAll();
   };
 
-  const deleteEmployee = (id: string) => {
+  private deleteEmployee = (id: string): void => {
     mockDb.deleteEmployee(id);
-    refreshAll();
+    this.refreshAll();
   };
 
-  return (
-    <AppContext.Provider
-      value={{
-        currentRole,
-        setCurrentRole,
-        selectedBranchId,
-        setSelectedBranchId,
-        companyInfo,
-        branches,
-        employees,
-        services,
-        clients,
-        appointments,
-        queueItems,
-        products,
-        providers,
-        sales,
-        activeSession,
-        refreshAll,
-        updateCompanyInfo,
-        addClient,
-        addAppointment,
-        updateAptStatus,
-        updateApt,
-        addToQueue,
-        updateQueueStatus,
-        addSale,
-        openCash,
-        closeCash,
-        addCashMovement,
-        addProduct,
-        updateProduct,
-        deleteProduct,
-        adjustProductStock,
-        addService,
-        updateService,
-        addEmployee,
-        updateEmployee,
-        deleteEmployee,
-      }}
-    >
-      {children}
-    </AppContext.Provider>
-  );
-};
+  private addProvider = (prov: Omit<Provider, 'id' | 'createdAt'>): void => {
+    mockDb.createProvider({ ...prov, tenantId: 'tenant-1' });
+    this.refreshAll();
+  };
 
-export const useApp = () => {
-  const context = useContext(AppContext);
-  if (context === undefined) {
-    throw new Error('useApp must be used within an AppProvider');
+  private updateProvider = (id: string, updates: Partial<Provider>): void => {
+    mockDb.updateProvider(id, updates);
+    this.refreshAll();
+  };
+
+  private deleteProvider = (id: string): void => {
+    mockDb.deleteProvider(id);
+    this.refreshAll();
+  };
+
+  private addPurchase = (
+    pur: Omit<Purchase, 'id' | 'createdAt' | 'total'>,
+    items: (Omit<PurchaseItem, 'id' | 'purchaseId'> & {
+      profitMargin?: number;
+      salePrice?: number;
+      updateSalePrice?: boolean;
+    })[]
+  ): Purchase => {
+    const res = mockDb.createPurchase(pur, items);
+    this.refreshAll();
+    return res;
+  };
+
+  private deletePurchase = (id: string): void => {
+    mockDb.deletePurchase(id);
+    this.refreshAll();
+  };
+
+  public render(): React.ReactNode {
+    const contextValue: AppContextProps = {
+      currentRole: this.state.currentRole,
+      setCurrentRole: this.setCurrentRole,
+      selectedBranchId: this.state.selectedBranchId,
+      setSelectedBranchId: this.setSelectedBranchId,
+      theme: this.state.theme,
+      toggleTheme: this.toggleTheme,
+      companyInfo: this.state.companyInfo,
+      branches: this.state.branches,
+      employees: this.state.employees,
+      services: this.state.services,
+      clients: this.state.clients,
+      appointments: this.state.appointments,
+      queueItems: this.state.queueItems,
+      products: this.state.products,
+      providers: this.state.providers,
+      purchases: this.state.purchases,
+      sales: this.state.sales,
+      activeSession: this.state.activeSession,
+      refreshAll: () => this.refreshAll(),
+      updateCompanyInfo: this.updateCompanyInfo,
+      addClient: this.addClient,
+      addAppointment: this.addAppointment,
+      updateAptStatus: this.updateAptStatus,
+      updateApt: this.updateApt,
+      addToQueue: this.addToQueue,
+      updateQueueStatus: this.updateQueueStatus,
+      addSale: this.addSale,
+      openCash: this.openCash,
+      closeCash: this.closeCash,
+      addCashMovement: this.addCashMovement,
+      addProduct: this.addProduct,
+      updateProduct: this.updateProduct,
+      deleteProduct: this.deleteProduct,
+      adjustProductStock: this.adjustProductStock,
+      addService: this.addService,
+      updateService: this.updateService,
+      addEmployee: this.addEmployee,
+      updateEmployee: this.updateEmployee,
+      deleteEmployee: this.deleteEmployee,
+      addProvider: this.addProvider,
+      updateProvider: this.updateProvider,
+      deleteProvider: this.deleteProvider,
+      addPurchase: this.addPurchase,
+      deletePurchase: this.deletePurchase,
+    };
+
+    return (
+      <AppContext.Provider value={contextValue}>
+        {this.props.children}
+      </AppContext.Provider>
+    );
   }
-  return context;
-};
+}
+
+/**
+ * Clase base abstracta para todos los componentes de vista de la aplicación.
+ * Provee acceso encapsulado al contexto global mediante herencia OOP.
+ */
+export abstract class BaseAppComponent<P = {}, S = {}> extends React.Component<P, S> {
+  public static contextType = AppContext;
+  declare context: React.ContextType<typeof AppContext>;
+
+  protected get app(): AppContextProps {
+    if (!this.context) {
+      throw new Error('BaseAppComponent debe utilizarse dentro de un AppProvider.');
+    }
+    return this.context;
+  }
+}

@@ -1,12 +1,50 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400..700;1,9..40,400..700&family=JetBrains+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap');
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme {
-  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "DM Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+
+  /* Paleta Azul Marino (Navy Blue) institucional para ambos temas */
+  --color-navy-50: #eff5fc;
+  --color-navy-100: #dce8f7;
+  --color-navy-200: #bfd5f0;
+  --color-navy-300: #8cb7e6;
+  --color-navy-400: #5994d9;
+  --color-navy-500: #2f6ec4;
+  --color-navy-600: #1c519b;
+  --color-navy-700: #143d78;
+  --color-navy-800: #0f2e5c;
+  --color-navy-900: #0b2245;
+  --color-navy-950: #06142b;
 }
 
-/* Custom scrollbars suited for a professional light interface */
+@layer base {
+  body {
+    font-family: var(--font-sans);
+    background-color: #f8fafc;
+    color: #0f172a;
+    transition: background-color 0.2s ease, color 0.2s ease;
+  }
+
+  .dark body {
+    background-color: #070e1a;
+    color: #f1f5f9;
+  }
+
+  h1, h2, h3, h4 {
+    font-family: var(--font-display);
+  }
+
+  .font-mono {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+/* Scrollbars adaptados a tema dual claro y oscuro con acento azul marino */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -16,13 +54,25 @@
   background: #f1f5f9;
 }
 
+.dark ::-webkit-scrollbar-track {
+  background: #0a1526;
+}
+
 ::-webkit-scrollbar-thumb {
   background: #cbd5e1;
   border-radius: 4px;
 }
 
+.dark ::-webkit-scrollbar-thumb {
+  background: #1e3354;
+}
+
 ::-webkit-scrollbar-thumb:hover {
-  background: #4f46e5;
+  background: #143d78;
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: #2f6ec4;
 }
 
 @keyframes fadeIn {

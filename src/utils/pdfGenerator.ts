@@ -31,126 +31,164 @@ export interface DailyReportData {
     createdAt?: string;
     clientId?: string;
     employeeId?: string;
-    paymentMethod: string;
-    subtotal: number;
+    paymentMethod?: string;
+    subtotal?: number;
     tip?: number;
-    total: number;
+    total?: number;
   }>;
   clients: Array<{ id: string; fullName?: string; nombreCompleto?: string }>;
   employees: Array<{ id: string; fullName?: string; nombreCompleto?: string }>;
 }
 
-export function generateDailyTransactionsPDF(data: DailyReportData): void {
-  const doc = new jsPDF({
-    orientation: 'portrait',
-    unit: 'mm',
-    format: 'a4',
-  });
+/**
+ * Clase base abstracta para generadores de reportes PDF.
+ */
+export abstract class BasePdfReport<TData> {
+  protected doc: jsPDF;
+  protected currentY: number = 40;
+  protected readonly primaryColor: [number, number, number] = [15, 23, 42];
+  protected readonly accentColor: [number, number, number] = [217, 119, 6];
+  protected readonly lightBg: [number, number, number] = [248, 250, 252];
 
-  const currency = data.companyInfo.currencySymbol || 'Bs.';
-  const branchText = data.branchName || 'Sucursal Principal';
+  constructor() {
+    this.doc = new jsPDF({
+      orientation: 'portrait',
+      unit: 'mm',
+      format: 'a4',
+    });
+  }
 
-  // Palette Colors
-  const primaryColor: [number, number, number] = [15, 23, 42]; // Slate 900
-  const accentColor: [number, number, number] = [217, 119, 6]; // Amber 600
-  const lightBg: [number, number, number] = [248, 250, 252]; // Slate 50
-  const textColor: [number, number, number] = [51, 65, 85]; // Slate 700
+  protected renderBanner(title: string, subtitle: string, meta: string): void {
+    this.doc.setFillColor(...this.primaryColor);
+    this.doc.rect(0, 0, 210, 32, 'F');
 
-  // 1. HEADER BANNER
-  doc.setFillColor(...primaryColor);
-  doc.rect(0, 0, 210, 32, 'F');
+    this.doc.setTextColor(255, 255, 255);
+    this.doc.setFont('helvetica', 'bold');
+    this.doc.setFontSize(16);
+    this.doc.text(title.toUpperCase(), 14, 13);
 
-  // Title
-  doc.setTextColor(255, 255, 255);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(16);
-  doc.text((data.companyInfo.name || 'BARBERÍA JOSUÉ').toUpperCase(), 14, 13);
+    this.doc.setFont('helvetica', 'normal');
+    this.doc.setFontSize(9);
+    this.doc.setTextColor(203, 213, 225);
+    this.doc.text(subtitle, 14, 19);
+    this.doc.text(meta, 14, 25);
 
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(9);
-  doc.setTextColor(203, 213, 225); // Slate 300
-  doc.text(`RESUMEN DE TRANSACCIONES Y ARQUEO DIARIO DE CAJA`, 14, 19);
-  doc.text(`Sucursal: ${branchText}  |  Fecha: ${data.dateStr}`, 14, 25);
+    this.doc.setFillColor(...this.accentColor);
+    this.doc.rect(0, 32, 210, 2, 'F');
+    this.currentY = 40;
+  }
 
-  // Accent Line under header
-  doc.setFillColor(...accentColor);
-  doc.rect(0, 32, 210, 2, 'F');
+  protected renderTimestampFooter(): void {
+    this.doc.setFont('helvetica', 'italic');
+    this.doc.setFontSize(7);
+    this.doc.setTextColor(148, 163, 184);
+    const nowStr = new Date().toLocaleString('es-BO');
+    this.doc.text(`Documento generado automáticamente por sistema el ${nowStr}`, 105, 287, { align: 'center' });
+  }
 
-  let currentY = 40;
+  public abstract generate(data: TData): void;
+}
 
-  // 2. RESUMEN EJECUTIVO / METRIC CARDS
-  const totalSalesAmount = data.salesToday.reduce((acc, s) => acc + (s.total || 0), 0);
-  const totalSubtotal = data.salesToday.reduce((acc, s) => acc + (s.subtotal || 0), 0);
-  const totalTips = data.salesToday.reduce((acc, s) => acc + (s.tip || 0), 0);
-  const totalTransactionsCount = data.salesToday.length;
+/**
+ * Generador OOP del reporte diario de transacciones y arqueo de caja.
+ */
+export class DailyCashReportGenerator extends BasePdfReport<DailyReportData> {
+  private currency: string = 'Bs.';
 
-  // Breakdown by payment method
-  const cashSales = data.salesToday
-    .filter((s) => s.paymentMethod === 'cash')
-    .reduce((acc, s) => acc + s.total, 0);
-  const cardSales = data.salesToday
-    .filter((s) => s.paymentMethod === 'card')
-    .reduce((acc, s) => acc + s.total, 0);
-  const transferSales = data.salesToday
-    .filter((s) => s.paymentMethod === 'transfer' || s.paymentMethod === 'qr')
-    .reduce((acc, s) => acc + s.total, 0);
+  public generate(data: DailyReportData): void {
+    this.currency = data.companyInfo.currencySymbol || 'Bs.';
+    const branchText = data.branchName || 'Sucursal Principal';
 
-  // Cards layout
-  const cardWidth = 43;
-  const cardHeight = 22;
-  const startX = 14;
+    this.renderBanner(
+      data.companyInfo.name || 'BARBERÍA JOSUÉ',
+      'RESUMEN DE TRANSACCIONES Y ARQUEO DIARIO DE CAJA',
+      `Sucursal: ${branchText}  |  Fecha: ${data.dateStr}`
+    );
 
-  const kpis = [
-    { title: 'Total Cobrado', val: `${totalSalesAmount.toFixed(2)} ${currency}`, color: primaryColor },
-    { title: 'Efectivo Cash', val: `${cashSales.toFixed(2)} ${currency}`, color: [16, 185, 129] as [number, number, number] },
-    { title: 'Tarjetas / Transf.', val: `${(cardSales + transferSales).toFixed(2)} ${currency}`, color: [99, 102, 241] as [number, number, number] },
-    { title: 'Nº Operaciones', val: `${totalTransactionsCount} ventas`, color: accentColor },
-  ];
+    const cashSales = this.renderExecutiveCards(data);
+    this.renderCashSessionTable(data, cashSales);
+    this.renderSalesTable(data);
+    this.renderMovementsTable(data);
+    this.renderSignatures();
+    this.renderTimestampFooter();
 
-  kpis.forEach((kpi, idx) => {
-    const x = startX + idx * (cardWidth + 4);
-    doc.setFillColor(...lightBg);
-    doc.setDrawColor(226, 232, 240);
-    doc.roundedRect(x, currentY, cardWidth, cardHeight, 2, 2, 'FD');
+    const safeDate = data.dateStr.replace(/[^a-zA-Z0-9-]/g, '_');
+    this.doc.save(`resumen_caja_${safeDate}.pdf`);
+  }
 
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(7);
-    doc.setTextColor(100, 116, 139);
-    doc.text(kpi.title.toUpperCase(), x + 3, currentY + 6);
+  private renderExecutiveCards(data: DailyReportData): number {
+    const totalSalesAmount = data.salesToday.reduce((acc, s) => acc + (s.total || 0), 0);
+    const totalTransactionsCount = data.salesToday.length;
 
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(10);
-    doc.setTextColor(...kpi.color);
-    doc.text(kpi.val, x + 3, currentY + 15);
-  });
+    const cashSales = data.salesToday
+      .filter((s) => s.paymentMethod === 'cash')
+      .reduce((acc, s) => acc + (s.total || 0), 0);
+    const cardSales = data.salesToday
+      .filter((s) => s.paymentMethod === 'card')
+      .reduce((acc, s) => acc + (s.total || 0), 0);
+    const transferSales = data.salesToday
+      .filter((s) => s.paymentMethod === 'transfer' || s.paymentMethod === 'qr')
+      .reduce((acc, s) => acc + (s.total || 0), 0);
 
-  currentY += cardHeight + 8;
+    const cardWidth = 43;
+    const cardHeight = 22;
+    const startX = 14;
 
-  // 3. ESTADO DE CAJA CHICA (Si hay sesión activa)
-  if (data.activeSession) {
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(10);
-    doc.setTextColor(...primaryColor);
-    doc.text('ESTADO Y BALANCE DE LA CAJA CHICA', 14, currentY);
-    currentY += 4;
+    const kpis = [
+      { title: 'Total Cobrado', val: `${totalSalesAmount.toFixed(2)} ${this.currency}`, color: this.primaryColor },
+      { title: 'Efectivo Cash', val: `${cashSales.toFixed(2)} ${this.currency}`, color: [16, 185, 129] as [number, number, number] },
+      { title: 'Tarjetas / Transf.', val: `${(cardSales + transferSales).toFixed(2)} ${this.currency}`, color: [99, 102, 241] as [number, number, number] },
+      { title: 'Nº Operaciones', val: `${totalTransactionsCount} ventas`, color: this.accentColor },
+    ];
+
+    kpis.forEach((kpi, idx) => {
+      const x = startX + idx * (cardWidth + 4);
+      this.doc.setFillColor(...this.lightBg);
+      this.doc.setDrawColor(226, 232, 240);
+      this.doc.roundedRect(x, this.currentY, cardWidth, cardHeight, 2, 2, 'FD');
+
+      this.doc.setFont('helvetica', 'bold');
+      this.doc.setFontSize(7);
+      this.doc.setTextColor(100, 116, 139);
+      this.doc.text(kpi.title.toUpperCase(), x + 3, this.currentY + 6);
+
+      this.doc.setFont('helvetica', 'bold');
+      this.doc.setFontSize(10);
+      this.doc.setTextColor(...kpi.color);
+      this.doc.text(kpi.val, x + 3, this.currentY + 15);
+    });
+
+    this.currentY += cardHeight + 8;
+    return cashSales;
+  }
+
+  private renderCashSessionTable(data: DailyReportData, cashSales: number): void {
+    if (!data.activeSession) return;
+
+    this.doc.setFont('helvetica', 'bold');
+    this.doc.setFontSize(10);
+    this.doc.setTextColor(...this.primaryColor);
+    this.doc.text('ESTADO Y BALANCE DE LA CAJA CHICA', 14, this.currentY);
+    this.currentY += 4;
 
     const opening = data.activeSession.openingBalance || 0;
-    const expected = data.activeSession.expectedBalance || (opening + cashSales);
+    const expected = data.activeSession.expectedBalance || opening + cashSales;
+    const movementsNet = (data.movements || []).reduce((acc, m) => {
+      const isInc = (m.type || m.tipo) === 'income';
+      const amt = Number(m.amount ?? m.monto ?? 0);
+      return acc + (isInc ? amt : -amt);
+    }, 0);
 
-    autoTable(doc, {
-      startY: currentY,
+    autoTable(this.doc, {
+      startY: this.currentY,
       margin: { left: 14, right: 14 },
       head: [['Fondo de Apertura', 'Ventas en Efectivo', 'Ajustes / Arqueos', 'Balance Esperado en Caja']],
       body: [
         [
-          `${opening.toFixed(2)} ${currency}`,
-          `${cashSales.toFixed(2)} ${currency}`,
-          `${((data.movements || []).reduce((acc, m) => {
-            const isInc = (m.type || m.tipo) === 'income';
-            const amt = Number(m.amount ?? m.monto ?? 0);
-            return acc + (isInc ? amt : -amt);
-          }, 0)).toFixed(2)} ${currency}`,
-          `${expected.toFixed(2)} ${currency}`,
+          `${opening.toFixed(2)} ${this.currency}`,
+          `${cashSales.toFixed(2)} ${this.currency}`,
+          `${movementsNet.toFixed(2)} ${this.currency}`,
+          `${expected.toFixed(2)} ${this.currency}`,
         ],
       ],
       styles: { fontSize: 8, cellPadding: 3 },
@@ -158,40 +196,47 @@ export function generateDailyTransactionsPDF(data: DailyReportData): void {
       bodyStyles: { textColor: [15, 23, 42], fontStyle: 'bold' },
     });
 
-    currentY = (doc as any).lastAutoTable.finalY + 8;
+    this.currentY = (this.doc as any).lastAutoTable.finalY + 8;
   }
 
-  // 4. DETALLE DE VENTAS DEL DÍA
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(10);
-  doc.setTextColor(...primaryColor);
-  doc.text('DETALLE DE TRANSACCIONES Y VENTAS', 14, currentY);
-  currentY += 4;
+  private renderSalesTable(data: DailyReportData): void {
+    this.doc.setFont('helvetica', 'bold');
+    this.doc.setFontSize(10);
+    this.doc.setTextColor(...this.primaryColor);
+    this.doc.text('DETALLE DE TRANSACCIONES Y VENTAS', 14, this.currentY);
+    this.currentY += 4;
 
-  if (data.salesToday.length === 0) {
-    doc.setFont('helvetica', 'italic');
-    doc.setFontSize(8);
-    doc.setTextColor(100, 116, 139);
-    doc.text('No hay registro de ventas ni transacciones para este día.', 14, currentY + 4);
-    currentY += 12;
-  } else {
+    if (data.salesToday.length === 0) {
+      this.doc.setFont('helvetica', 'italic');
+      this.doc.setFontSize(8);
+      this.doc.setTextColor(100, 116, 139);
+      this.doc.text('No hay registro de ventas ni transacciones para este día.', 14, this.currentY + 4);
+      this.currentY += 12;
+      return;
+    }
+
+    const totalSalesAmount = data.salesToday.reduce((acc, s) => acc + (s.total || 0), 0);
+    const totalSubtotal = data.salesToday.reduce((acc, s) => acc + (s.subtotal || 0), 0);
+    const totalTips = data.salesToday.reduce((acc, s) => acc + (s.tip || 0), 0);
+
     const tableRows = data.salesToday.map((s) => {
       const client = data.clients.find((c) => c.id === s.clientId);
       const employee = data.employees.find((e) => e.id === s.employeeId);
       const clientName = client?.fullName || client?.nombreCompleto || 'Cliente General';
       const barberName = employee?.fullName || employee?.nombreCompleto || 'Sin Asignar';
-      
+
       const dateObj = new Date(s.createdAt || Date.now());
       const timeStr = dateObj.toLocaleTimeString('es-BO', { hour: '2-digit', minute: '2-digit' });
 
+      const method = s.paymentMethod || 'cash';
       const methodLabel =
-        s.paymentMethod === 'cash'
+        method === 'cash'
           ? 'Efectivo'
-          : s.paymentMethod === 'card'
+          : method === 'card'
           ? 'Tarjeta'
-          : s.paymentMethod === 'transfer'
+          : method === 'transfer'
           ? 'Transferencia QR'
-          : s.paymentMethod;
+          : method;
 
       return [
         s.id,
@@ -199,14 +244,14 @@ export function generateDailyTransactionsPDF(data: DailyReportData): void {
         clientName,
         barberName,
         methodLabel,
-        `${(s.subtotal || 0).toFixed(2)} ${currency}`,
-        `${(s.tip || 0).toFixed(2)} ${currency}`,
-        `${(s.total || 0).toFixed(2)} ${currency}`,
+        `${(s.subtotal || 0).toFixed(2)} ${this.currency}`,
+        `${(s.tip || 0).toFixed(2)} ${this.currency}`,
+        `${(s.total || 0).toFixed(2)} ${this.currency}`,
       ];
     });
 
-    autoTable(doc, {
-      startY: currentY,
+    autoTable(this.doc, {
+      startY: this.currentY,
       margin: { left: 14, right: 14 },
       head: [['Folio', 'Hora', 'Cliente', 'Barbero', 'Método', 'Subtotal', 'Propina', 'Total']],
       body: tableRows,
@@ -217,9 +262,9 @@ export function generateDailyTransactionsPDF(data: DailyReportData): void {
           '',
           '',
           '',
-          `${totalSubtotal.toFixed(2)} ${currency}`,
-          `${totalTips.toFixed(2)} ${currency}`,
-          `${totalSalesAmount.toFixed(2)} ${currency}`,
+          `${totalSubtotal.toFixed(2)} ${this.currency}`,
+          `${totalTips.toFixed(2)} ${this.currency}`,
+          `${totalSalesAmount.toFixed(2)} ${this.currency}`,
         ],
       ],
       styles: { fontSize: 8, cellPadding: 2.5 },
@@ -228,21 +273,22 @@ export function generateDailyTransactionsPDF(data: DailyReportData): void {
       alternateRowStyles: { fillColor: [248, 250, 252] },
     });
 
-    currentY = (doc as any).lastAutoTable.finalY + 8;
+    this.currentY = (this.doc as any).lastAutoTable.finalY + 8;
   }
 
-  // 5. MOVIMIENTOS DE CAJA CHICA (Si hay)
-  if (data.movements && data.movements.length > 0) {
-    if (currentY > 240) {
-      doc.addPage();
-      currentY = 20;
+  private renderMovementsTable(data: DailyReportData): void {
+    if (!data.movements || data.movements.length === 0) return;
+
+    if (this.currentY > 240) {
+      this.doc.addPage();
+      this.currentY = 20;
     }
 
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(10);
-    doc.setTextColor(...primaryColor);
-    doc.text('BITÁCORA DE ARQUEOS Y MOVIMIENTOS DE CAJA', 14, currentY);
-    currentY += 4;
+    this.doc.setFont('helvetica', 'bold');
+    this.doc.setFontSize(10);
+    this.doc.setTextColor(...this.primaryColor);
+    this.doc.text('BITÁCORA DE ARQUEOS Y MOVIMIENTOS DE CAJA', 14, this.currentY);
+    this.currentY += 4;
 
     const movementRows = data.movements.map((m, idx) => {
       const isInc = (m.type || m.tipo) === 'income';
@@ -252,12 +298,12 @@ export function generateDailyTransactionsPDF(data: DailyReportData): void {
         `#${idx + 1}`,
         isInc ? 'Ingreso (+)' : 'Egreso / Retiro (-)',
         reasonText,
-        `${isInc ? '+' : '-'}${amt.toFixed(2)} ${currency}`,
+        `${isInc ? '+' : '-'}${amt.toFixed(2)} ${this.currency}`,
       ];
     });
 
-    autoTable(doc, {
-      startY: currentY,
+    autoTable(this.doc, {
+      startY: this.currentY,
       margin: { left: 14, right: 14 },
       head: [['Nº', 'Tipo', 'Motivo / Concepto', 'Monto']],
       body: movementRows,
@@ -265,40 +311,32 @@ export function generateDailyTransactionsPDF(data: DailyReportData): void {
       headStyles: { fillColor: [51, 65, 85], textColor: [255, 255, 255], fontStyle: 'bold' },
     });
 
-    currentY = (doc as any).lastAutoTable.finalY + 12;
+    this.currentY = (this.doc as any).lastAutoTable.finalY + 12;
   }
 
-  // 6. FIRMAS Y FOOTER
-  if (currentY > 240) {
-    doc.addPage();
-    currentY = 30;
-  } else {
-    currentY = Math.max(currentY + 10, 240);
+  private renderSignatures(): void {
+    if (this.currentY > 240) {
+      this.doc.addPage();
+      this.currentY = 30;
+    } else {
+      this.currentY = Math.max(this.currentY + 10, 240);
+    }
+
+    this.doc.setDrawColor(203, 213, 225);
+    this.doc.setLineWidth(0.5);
+
+    this.doc.line(25, this.currentY, 85, this.currentY);
+    this.doc.setFont('helvetica', 'bold');
+    this.doc.setFontSize(8);
+    this.doc.setTextColor(51, 65, 85);
+    this.doc.text('Firma Cajero / Administrador', 55, this.currentY + 5, { align: 'center' });
+
+    this.doc.line(125, this.currentY, 185, this.currentY);
+    this.doc.text('Firma Supervisor / Gerencia', 155, this.currentY + 5, { align: 'center' });
   }
+}
 
-  // Line for signatures
-  doc.setDrawColor(203, 213, 225);
-  doc.setLineWidth(0.5);
-
-  // Cajero
-  doc.line(25, currentY, 85, currentY);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(8);
-  doc.setTextColor(51, 65, 85);
-  doc.text('Firma Cajero / Administrador', 55, currentY + 5, { align: 'center' });
-
-  // Supervisor
-  doc.line(125, currentY, 185, currentY);
-  doc.text('Firma Supervisor / Gerencia', 155, currentY + 5, { align: 'center' });
-
-  // Timestamp footer
-  doc.setFont('helvetica', 'italic');
-  doc.setFontSize(7);
-  doc.setTextColor(148, 163, 184);
-  const nowStr = new Date().toLocaleString('es-BO');
-  doc.text(`Documento generado automáticamente por sistema el ${nowStr}`, 105, 287, { align: 'center' });
-
-  // Save PDF file
-  const safeDate = data.dateStr.replace(/[^a-zA-Z0-9-]/g, '_');
-  doc.save(`resumen_caja_${safeDate}.pdf`);
+export function generateDailyTransactionsPDF(data: DailyReportData): void {
+  const generator = new DailyCashReportGenerator();
+  generator.generate(data);
 }

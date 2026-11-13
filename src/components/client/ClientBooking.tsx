@@ -3,10 +3,10 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
-import { useApp } from '../../context/AppContext';
+import React from 'react';
+import { BaseAppComponent } from '../../context/AppContext';
 import { scheduleEngine } from '../../services/scheduleEngine';
-import { formatCurrency, formatDateLegible } from '../../utils/helpers';
+import { CurrencyFormatter, DateTimeHelper, WhatsAppUrlBuilder } from '../../utils/helpers';
 import {
   Sparkles,
   Calendar,
@@ -24,114 +24,111 @@ import {
   MessageSquare,
 } from 'lucide-react';
 
-export const ClientBooking: React.FC = () => {
-  const {
-    branches,
-    employees,
-    services,
-    addClient,
-    addAppointment,
-    selectedBranchId,
-    setSelectedBranchId,
-    clients,
-  } = useApp();
+interface ClientBookingState {
+  step: number;
+  selectedServiceId: string;
+  selectedEmployeeId: string;
+  selectedDate: string;
+  selectedTime: string;
+  firstName: string;
+  lastName: string;
+  phone: string;
+  email: string;
+  notes: string;
+  createdApt: any;
+  errorMsg: string;
+}
 
-  // Wizard Steps: 1 = Sucursal & Servicio, 2 = Barbero, 3 = Fecha & Hora, 4 = Información, 5 = Éxito
-  const [step, setStep] = useState(1);
+export class ClientBooking extends BaseAppComponent<{}, ClientBookingState> {
+  constructor(props: {}) {
+    super(props);
+    this.state = {
+      step: 1,
+      selectedServiceId: '',
+      selectedEmployeeId: '',
+      selectedDate: DateTimeHelper.getTomorrowStr(),
+      selectedTime: '',
+      firstName: '',
+      lastName: '',
+      phone: '',
+      email: '',
+      notes: '',
+      createdApt: null,
+      errorMsg: '',
+    };
+  }
 
-  // Selections
-  const [selectedServiceId, setSelectedServiceId] = useState('');
-  const [selectedEmployeeId, setSelectedEmployeeId] = useState('');
-  const [selectedDate, setSelectedDate] = useState('');
-  const [selectedTime, setSelectedTime] = useState('');
+  private handleNextStep = (): void => {
+    const { step, selectedServiceId, selectedEmployeeId, selectedTime } = this.state;
+    this.setState({ errorMsg: '' });
 
-  // Client info for unregistered/registered
-  const [fullName, setFullName] = useState('');
-  const [phone, setPhone] = useState('');
-  const [email, setEmail] = useState('');
-  const [notes, setNotes] = useState('');
-
-  // Final ticket/success info
-  const [createdApt, setCreatedApt] = useState<any>(null);
-  const [errorMsg, setErrorMsg] = useState('');
-
-  // Load standard date (tomorrow as default)
-  useEffect(() => {
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    setSelectedDate(tomorrow.toISOString().split('T')[0]);
-  }, []);
-
-  const activeBranch = branches.find(b => b.id === selectedBranchId) || branches[0];
-  const activeService = services.find(s => s.id === selectedServiceId);
-  const activeEmployee = employees.find(e => e.id === selectedEmployeeId);
-
-  // Filtrar barberos de la sucursal seleccionada
-  const branchBarbers = employees.filter(e => e.branchId === selectedBranchId && e.role === 'barber' && e.active);
-
-  // Horas disponibles reales
-  const availableSlots = (selectedBranchId && selectedEmployeeId && selectedServiceId && selectedDate)
-    ? scheduleEngine.getAvailableSlots(selectedBranchId, selectedEmployeeId, selectedServiceId, selectedDate)
-    : [];
-
-  const handleNextStep = () => {
-    setErrorMsg('');
     if (step === 1) {
       if (!selectedServiceId) {
-        setErrorMsg('Por favor selecciona un servicio para continuar.');
+        this.setState({ errorMsg: 'Por favor selecciona un servicio para continuar.' });
         return;
       }
-      setStep(2);
+      this.setState({ step: 2 });
     } else if (step === 2) {
       if (!selectedEmployeeId) {
-        setErrorMsg('Por favor selecciona un barbero para continuar.');
+        this.setState({ errorMsg: 'Por favor selecciona un barbero para continuar.' });
         return;
       }
-      setStep(3);
+      this.setState({ step: 3 });
     } else if (step === 3) {
       if (!selectedTime) {
-        setErrorMsg('Por favor selecciona una hora disponible para continuar.');
+        this.setState({ errorMsg: 'Por favor selecciona una hora disponible para continuar.' });
         return;
       }
-      setStep(4);
+      this.setState({ step: 4 });
     }
   };
 
-  const handlePrevStep = () => {
-    setErrorMsg('');
-    setStep(prev => Math.max(1, prev - 1));
+  private handlePrevStep = (): void => {
+    this.setState(prev => ({
+      errorMsg: '',
+      step: Math.max(1, prev.step - 1),
+    }));
   };
 
-  const handleFinalizeBooking = (e: React.FormEvent) => {
+  private handleFinalizeBooking = (e: React.FormEvent): void => {
     e.preventDefault();
-    setErrorMsg('');
+    const {
+      firstName,
+      lastName,
+      phone,
+      email,
+      notes,
+      selectedServiceId,
+      selectedEmployeeId,
+      selectedDate,
+      selectedTime,
+    } = this.state;
+    const { services, addClient, addAppointment, selectedBranchId } = this.app;
 
-    if (!fullName || !phone || !email) {
-      setErrorMsg('Todos los datos personales (Nombre, Celular, Correo) son obligatorios.');
+    this.setState({ errorMsg: '' });
+
+    if (!firstName.trim() || !phone || !email) {
+      this.setState({ errorMsg: 'Nombres, Celular y Correo son obligatorios.' });
       return;
     }
 
+    const activeService = services.find(s => s.id === selectedServiceId);
+    const fullComputedName = `${firstName.trim()} ${lastName.trim()}`.trim();
+
     try {
-      // 1. Crear o recuperar cliente (previene duplicados mediante email o teléfono en el tenant)
-      const clientPayload = {
+      const client = addClient({
         tenantId: 'tenant-1',
-        fullName,
+        fullName: fullComputedName,
         phone,
         email,
         isRegistered: false,
-      };
-      
-      const client = addClient(clientPayload);
+      });
 
-      // Calcular hora fin del servicio
       const [sh, sm] = selectedTime.split(':').map(Number);
       const totalMinutes = sh * 60 + sm + (activeService?.duration || 30);
-      const eh = Math.floor(totalMinutes / 60);
-      const em = totalMinutes % 60;
-      const endTimeStr = `${eh.toString().padStart(2, '0')}:${em.toString().padStart(2, '0')}`;
+      const endTimeStr = scheduleEngine.minutesToTime(totalMinutes);
 
-      // 2. Agendar cita en base de datos local
-      const aptPayload = {
+      const appointment = addAppointment({
         branchId: selectedBranchId,
         clientId: client.id,
         employeeId: selectedEmployeeId,
@@ -139,91 +136,225 @@ export const ClientBooking: React.FC = () => {
         date: selectedDate,
         startTime: selectedTime,
         endTime: endTimeStr,
-        status: 'confirmed' as const, // Autoconfirmado por default en el wizard cliente
+        status: 'confirmed',
         price: activeService?.price || 0,
         notes,
         isWalkIn: false,
-      };
+      });
 
-      const appointment = addAppointment(aptPayload);
-      setCreatedApt(appointment);
-      setStep(5);
-    } catch (e: any) {
-      setErrorMsg(e.message || 'Error al procesar la reserva. Por favor intente de nuevo.');
+      this.setState({ createdApt: appointment, step: 5 });
+    } catch (err: any) {
+      this.setState({ errorMsg: err.message || 'Error al procesar la reserva. Por favor intente de nuevo.' });
     }
   };
 
-  return (
-    <div className="max-w-3xl mx-auto py-4 animate-fadeIn">
-      {/* HEADER ENCANTO */}
-      <div className="text-center mb-8">
-        <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-indigo-50 text-indigo-600 text-xs font-bold uppercase tracking-wider mb-2.5">
-          <Sparkles className="w-3.5 h-3.5" />
-          <span>Reserva en línea</span>
-        </div>
-        <h1 className="text-3xl font-black text-slate-900 tracking-tight">Agenda tu Servicio</h1>
-        <p className="text-sm text-slate-500 mt-1.5 font-medium">Un ritual de estilo personalizado a tu medida en Barbería Pro.</p>
-      </div>
+  private handleResetBooking = (): void => {
+    this.setState({
+      selectedServiceId: '',
+      selectedEmployeeId: '',
+      selectedTime: '',
+      firstName: '',
+      lastName: '',
+      phone: '',
+      email: '',
+      notes: '',
+      step: 1,
+    });
+  };
 
-      {/* PROGRESS TRACKER */}
-      {step < 5 && (
-        <div className="flex items-center justify-between mb-8 px-4">
-          {[1, 2, 3, 4].map((s) => (
-            <React.Fragment key={s}>
-              <div className="flex flex-col items-center">
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs transition-all border ${
-                  step === s
-                    ? 'bg-indigo-600 text-white border-indigo-600 shadow-lg shadow-indigo-600/15'
-                    : step > s
-                    ? 'bg-indigo-50 text-indigo-600 border-indigo-200'
-                    : 'bg-white text-slate-400 border-slate-200'
-                }`}>
-                  {step > s ? '✓' : s}
+  public render(): React.ReactNode {
+    const { branches, employees, services, selectedBranchId, setSelectedBranchId } = this.app;
+    const {
+      step,
+      selectedServiceId,
+      selectedEmployeeId,
+      selectedDate,
+      selectedTime,
+      firstName,
+      lastName,
+      phone,
+      email,
+      notes,
+      createdApt,
+      errorMsg,
+    } = this.state;
+
+    const activeBranch = branches.find(b => b.id === selectedBranchId) || branches[0];
+    const activeService = services.find(s => s.id === selectedServiceId);
+    const activeEmployee = employees.find(e => e.id === selectedEmployeeId);
+    const branchBarbers = employees.filter(e => e.branchId === selectedBranchId && e.role === 'barber' && e.active);
+
+    const availableSlots =
+      selectedBranchId && selectedEmployeeId && selectedServiceId && selectedDate
+        ? scheduleEngine.getAvailableSlots(selectedBranchId, selectedEmployeeId, selectedServiceId, selectedDate)
+        : [];
+
+    return (
+      <div className="max-w-3xl mx-auto py-4 animate-fadeIn">
+        <div className="text-center mb-8">
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md bg-navy-50 dark:bg-navy-900/70 text-navy-800 dark:text-navy-200 border border-navy-200 dark:border-navy-700/60 text-xs font-bold uppercase tracking-wider mb-2.5">
+            <Sparkles className="w-3.5 h-3.5" />
+            <span>Reserva en línea</span>
+          </div>
+          <h1 className="text-3xl font-black text-slate-900 dark:text-white tracking-tight">Agenda tu Servicio</h1>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1.5 font-medium">
+            Un ritual de estilo personalizado a tu medida.
+          </p>
+        </div>
+
+        {step < 5 && (
+          <div className="flex items-center justify-between mb-8 px-4">
+            {[1, 2, 3, 4].map(s => (
+              <React.Fragment key={s}>
+                <div className="flex flex-col items-center">
+                  <div
+                    className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs transition-all border ${
+                      step === s
+                        ? 'bg-navy-800 dark:bg-navy-600 text-white border-navy-800 dark:border-navy-500 shadow-md'
+                        : step > s
+                        ? 'bg-navy-50 dark:bg-navy-900/80 text-navy-800 dark:text-navy-200 border-navy-200 dark:border-navy-600'
+                        : 'bg-white dark:bg-[#0D1A2D] text-slate-400 border-slate-200 dark:border-[#1E3354]'
+                    }`}
+                  >
+                    {step > s ? '✓' : s}
+                  </div>
+                  <span
+                    className={`text-[10px] mt-1.5 font-bold tracking-wide uppercase ${
+                      step === s ? 'text-navy-800 dark:text-navy-300' : 'text-slate-400 dark:text-slate-500'
+                    }`}
+                  >
+                    {s === 1 ? 'Servicio' : s === 2 ? 'Barbero' : s === 3 ? 'Fecha' : 'Confirmar'}
+                  </span>
                 </div>
-                <span className={`text-[10px] mt-1.5 font-bold tracking-wide uppercase ${step === s ? 'text-indigo-600' : 'text-slate-400'}`}>
-                  {s === 1 ? 'Servicio' : s === 2 ? 'Barbero' : s === 3 ? 'Fecha' : 'Confirmar'}
-                </span>
-              </div>
-              {s < 4 && (
-                <div className={`flex-1 h-[2px] mx-2 transition-all ${step > s ? 'bg-indigo-600' : 'bg-slate-200'}`} />
-              )}
-            </React.Fragment>
-          ))}
-        </div>
-      )}
-
-      {/* PANEL PRINCIPAL */}
-      <div className="bg-white border border-slate-200 rounded-2xl shadow-xl overflow-hidden">
-        {errorMsg && (
-          <div className="bg-rose-50 border-b border-rose-100 px-6 py-3.5 text-xs text-rose-600 font-medium">
-            ⚠️ {errorMsg}
+                {s < 4 && (
+                  <div
+                    className={`flex-1 h-[2px] mx-2 transition-all ${
+                      step > s ? 'bg-navy-700 dark:bg-navy-500' : 'bg-slate-200 dark:bg-[#1E3354]'
+                    }`}
+                  />
+                )}
+              </React.Fragment>
+            ))}
           </div>
         )}
 
-        {/* STEP 1: SUCURSAL Y SERVICIO */}
-        {step === 1 && (
-          <div className="p-6 md:p-8 space-y-6">
-            <div>
-              <h2 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
-                <MapPin className="w-5 h-5 text-indigo-600" />
-                <span>1. Elige una Sucursal</span>
+        <div className="bg-white dark:bg-[#0D1A2D] border border-slate-200 dark:border-[#1E3354] rounded-2xl shadow-xl overflow-hidden">
+          {errorMsg && (
+            <div className="bg-rose-50 dark:bg-rose-950/40 border-b border-rose-200 dark:border-rose-800/50 px-6 py-3.5 text-xs text-rose-700 dark:text-rose-300 font-medium">
+              ⚠️ {errorMsg}
+            </div>
+          )}
+
+          {step === 1 && (
+            <div className="p-6 md:p-8 space-y-6">
+              <div>
+                <h2 className="text-lg font-bold text-slate-800 dark:text-white mb-4 flex items-center gap-2">
+                  <MapPin className="w-5 h-5 text-navy-700 dark:text-navy-300" />
+                  <span>1. Elige una Sucursal</span>
+                </h2>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {branches.map(b => (
+                    <button
+                      key={b.id}
+                      onClick={() => setSelectedBranchId(b.id)}
+                      className={`p-4 text-left rounded-xl border transition-all relative overflow-hidden flex flex-col cursor-pointer ${
+                        selectedBranchId === b.id
+                          ? 'bg-navy-50/80 dark:bg-navy-900/50 border-navy-700 dark:border-navy-400 shadow-sm'
+                          : 'bg-white dark:bg-[#12233B] border-slate-200 dark:border-[#243D63] hover:border-navy-300 dark:hover:border-navy-500'
+                      }`}
+                    >
+                      <span className="font-bold text-slate-900 dark:text-white text-sm block">{b.name}</span>
+                      <span className="text-xs text-slate-500 dark:text-slate-300 mt-1 block">{b.address}</span>
+                      <span className="text-[10px] text-slate-400 dark:text-slate-400 mt-2 block font-mono">
+                        {b.phone}
+                      </span>
+                      {selectedBranchId === b.id && (
+                        <div className="absolute right-3 top-3 w-4 h-4 rounded-full bg-navy-800 dark:bg-navy-500 flex items-center justify-center text-white font-black text-[9px]">
+                          ✓
+                        </div>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <h2 className="text-lg font-bold text-slate-800 dark:text-white mb-4 flex items-center gap-2">
+                  <Scissors className="w-5 h-5 text-navy-700 dark:text-navy-300" />
+                  <span>2. Selecciona tu Servicio</span>
+                </h2>
+                <div className="space-y-3">
+                  {services.map(s => (
+                    <button
+                      key={s.id}
+                      onClick={() => this.setState({ selectedServiceId: s.id })}
+                      className={`w-full p-4 text-left rounded-xl border transition-all flex justify-between items-center relative cursor-pointer ${
+                        selectedServiceId === s.id
+                          ? 'bg-navy-50/80 dark:bg-navy-900/50 border-navy-700 dark:border-navy-400 shadow-sm'
+                          : 'bg-white dark:bg-[#12233B] border-slate-200 dark:border-[#243D63] hover:border-navy-300 dark:hover:border-navy-500'
+                      }`}
+                    >
+                      <div className="flex gap-4 items-start pr-8">
+                        <div className="w-2.5 h-10 rounded shrink-0" style={{ backgroundColor: s.color }} />
+                        <div>
+                          <span className="font-bold text-sm text-slate-800 dark:text-white block">{s.name}</span>
+                          <p className="text-xs text-slate-500 dark:text-slate-300 mt-1 leading-normal">
+                            {s.description}
+                          </p>
+                          <div className="flex gap-3 mt-2 text-[10px] text-slate-500 dark:text-slate-400 font-medium">
+                            <span className="flex items-center gap-1 font-mono">
+                              <Clock className="w-3 h-3 text-navy-700 dark:text-navy-300" />
+                              {s.duration} min
+                            </span>
+                            <span className="bg-navy-50 dark:bg-navy-900/70 text-navy-800 dark:text-navy-200 px-1.5 py-0.5 rounded uppercase tracking-wider font-bold border border-navy-200 dark:border-navy-700/60">
+                              {s.category}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <span className="text-base font-black text-navy-800 dark:text-navy-300 block font-mono">
+                          {CurrencyFormatter.format(s.price || 0)}
+                        </span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {step === 2 && (
+            <div className="p-6 md:p-8 space-y-6">
+              <h2 className="text-lg font-bold text-slate-800 dark:text-white mb-4 flex items-center gap-2">
+                <User className="w-5 h-5 text-navy-700 dark:text-navy-300" />
+                <span>3. Elige tu Barbero / Estilista</span>
               </h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {branches.map((b) => (
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {branchBarbers.map(b => (
                   <button
                     key={b.id}
-                    onClick={() => setSelectedBranchId(b.id)}
-                    className={`p-4 text-left rounded-xl border transition-all relative overflow-hidden flex flex-col ${
-                      selectedBranchId === b.id
-                        ? 'bg-indigo-50/50 border-indigo-600 shadow-sm'
-                        : 'bg-white border-slate-200 hover:border-slate-300 hover:bg-slate-50/30'
+                    onClick={() => this.setState({ selectedEmployeeId: b.id })}
+                    className={`p-4 text-left rounded-xl border transition-all relative flex gap-3.5 items-center cursor-pointer ${
+                      selectedEmployeeId === b.id
+                        ? 'bg-navy-50/80 dark:bg-navy-900/50 border-navy-700 dark:border-navy-400 shadow-sm'
+                        : 'bg-white dark:bg-[#12233B] border-slate-200 dark:border-[#243D63] hover:border-navy-300 dark:hover:border-navy-500'
                     }`}
                   >
-                    <span className="font-bold text-slate-900 text-sm block">{b.name}</span>
-                    <span className="text-xs text-slate-500 mt-1 block">{b.address}</span>
-                    <span className="text-[10px] text-slate-400 mt-2 block">{b.phone}</span>
-                    {selectedBranchId === b.id && (
-                      <div className="absolute right-3 top-3 w-4 h-4 rounded-full bg-indigo-600 flex items-center justify-center text-white font-black text-[9px]">
+                    <div className="w-12 h-12 rounded-full bg-navy-800 dark:bg-navy-600 flex items-center justify-center font-bold text-white text-sm shrink-0 shadow-sm">
+                      {(b.fullName || '').charAt(0)}
+                      {(b.fullName || '').split(' ')[1]?.charAt(0) || ''}
+                    </div>
+                    <div>
+                      <span className="font-bold text-sm text-slate-800 dark:text-white block">{b.fullName}</span>
+                      <span className="text-xs text-slate-500 dark:text-slate-300 block mt-0.5 capitalize">{b.role}</span>
+                      <p className="text-[10px] text-slate-400 dark:text-slate-400 mt-1 leading-normal">
+                        Especialidades: {(b.specialties || []).join(', ')}
+                      </p>
+                    </div>
+                    {selectedEmployeeId === b.id && (
+                      <div className="absolute right-3 top-3 w-4 h-4 rounded-full bg-navy-800 dark:bg-navy-500 flex items-center justify-center text-white text-[9px] font-bold">
                         ✓
                       </div>
                     )}
@@ -231,385 +362,329 @@ export const ClientBooking: React.FC = () => {
                 ))}
               </div>
             </div>
+          )}
 
-            <div>
-              <h2 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
-                <Scissors className="w-5 h-5 text-indigo-600" />
-                <span>2. Selecciona tu Servicio</span>
+          {step === 3 && (
+            <div className="p-6 md:p-8 space-y-6">
+              <h2 className="text-lg font-bold text-slate-800 dark:text-white mb-4 flex items-center gap-2">
+                <Calendar className="w-5 h-5 text-navy-700 dark:text-navy-300" />
+                <span>4. Selecciona Fecha y Hora</span>
               </h2>
-              <div className="space-y-3">
-                {services.map((s) => (
-                  <button
-                    key={s.id}
-                    onClick={() => setSelectedServiceId(s.id)}
-                    className={`w-full p-4 text-left rounded-xl border transition-all flex justify-between items-center relative ${
-                      selectedServiceId === s.id
-                        ? 'bg-indigo-50/50 border-indigo-600 shadow-sm'
-                        : 'bg-white border-slate-200 hover:border-slate-300 hover:bg-slate-50/30'
-                    }`}
-                  >
-                    <div className="flex gap-4 items-start pr-8">
-                      <div
-                        className="w-2.5 h-10 rounded shrink-0"
-                        style={{ backgroundColor: s.color }}
-                      />
-                      <div>
-                        <span className="font-bold text-sm text-slate-800 block">{s.name}</span>
-                        <p className="text-xs text-slate-500 mt-1 leading-normal">{s.description}</p>
-                        <div className="flex gap-3 mt-2 text-[10px] text-slate-400 font-medium">
-                          <span className="flex items-center gap-1">
-                            <Clock className="w-3 h-3 text-indigo-600" />
-                            {s.duration} min
-                          </span>
-                          <span className="bg-indigo-50 text-indigo-600 px-1.5 py-0.5 rounded uppercase tracking-wider font-bold border border-indigo-100">
-                            {s.category}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="text-right shrink-0">
-                      <span className="text-base font-black text-indigo-600 block">
-                        {formatCurrency(s.price)}
-                      </span>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
 
-        {/* STEP 2: SELECCIONAR BARBERO */}
-        {step === 2 && (
-          <div className="p-6 md:p-8 space-y-6">
-            <h2 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
-              <User className="w-5 h-5 text-indigo-600" />
-              <span>3. Elige tu Barbero / Estilista</span>
-            </h2>
-            
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {branchBarbers.map((b) => (
-                <button
-                  key={b.id}
-                  onClick={() => setSelectedEmployeeId(b.id)}
-                  className={`p-4 text-left rounded-xl border transition-all relative flex gap-3.5 items-center ${
-                    selectedEmployeeId === b.id
-                      ? 'bg-indigo-50/50 border-indigo-600 shadow-sm'
-                      : 'bg-white border-slate-200 hover:border-slate-300 hover:bg-slate-50/30'
-                  }`}
-                >
-                  <div className="w-12 h-12 rounded-full bg-gradient-to-tr from-indigo-500 to-indigo-600 flex items-center justify-center font-bold text-white text-sm shrink-0 shadow-sm">
-                    {b.fullName.charAt(0)}{b.fullName.split(' ')[1]?.charAt(0) || ''}
-                  </div>
-                  <div>
-                    <span className="font-bold text-sm text-slate-800 block">{b.fullName}</span>
-                    <span className="text-xs text-slate-500 block mt-0.5 capitalize">{b.role}</span>
-                    <p className="text-[10px] text-slate-400 mt-1 leading-normal">
-                      Especialidades: {b.specialties.join(', ')}
-                    </p>
-                  </div>
-                  {selectedEmployeeId === b.id && (
-                    <div className="absolute right-3 top-3 w-4 h-4 rounded-full bg-indigo-600 flex items-center justify-center text-white text-[9px] font-bold">
-                      ✓
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <label className="text-xs text-slate-500 dark:text-slate-400 font-semibold uppercase tracking-wider block">
+                    Elige un Día
+                  </label>
+                  <input
+                    type="date"
+                    value={selectedDate}
+                    min={DateTimeHelper.getTodayStr()}
+                    onChange={e => this.setState({ selectedDate: e.target.value, selectedTime: '' })}
+                    className="w-full bg-white dark:bg-[#12233B] border border-slate-200 dark:border-[#243D63] rounded-xl px-4 py-3 text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:border-navy-700 dark:focus:border-navy-400"
+                  />
+                  <p className="text-[10px] text-slate-400 leading-normal mt-1">
+                    Nota: Solo mostramos días habilitados según el horario comercial de la sucursal y la jornada del barbero.
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-xs text-slate-500 dark:text-slate-400 font-semibold uppercase tracking-wider block">
+                    Horarios Disponibles
+                  </label>
+
+                  {availableSlots.length === 0 ? (
+                    <div className="p-4 rounded-xl border border-slate-200 dark:border-[#243D63] bg-slate-50 dark:bg-[#12233B] text-center text-xs text-slate-500 dark:text-slate-400">
+                      No hay horarios disponibles para {selectedDate}. Selecciona otra fecha o barbero.
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-3 gap-2 max-h-56 overflow-y-auto pr-1">
+                      {availableSlots.map(slot => (
+                        <button
+                          key={slot.time}
+                          disabled={!slot.available}
+                          onClick={() => this.setState({ selectedTime: slot.time })}
+                          className={`py-2 text-center text-xs rounded-lg font-semibold font-mono transition-all border ${
+                            selectedTime === slot.time
+                              ? 'bg-navy-800 dark:bg-navy-600 text-white border-navy-800 dark:border-navy-500 shadow-md cursor-pointer'
+                              : slot.available
+                              ? 'bg-white dark:bg-[#12233B] text-slate-700 dark:text-slate-200 border-slate-200 dark:border-[#243D63] hover:border-navy-600 dark:hover:border-navy-400 cursor-pointer'
+                              : 'bg-slate-100 dark:bg-[#0A1526] text-slate-400 dark:text-slate-600 border-slate-200 dark:border-[#1E3354] cursor-not-allowed line-through'
+                          }`}
+                          title={slot.reason}
+                        >
+                          {slot.time}
+                        </button>
+                      ))}
                     </div>
                   )}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* STEP 3: FECHA Y HORA DISPONIBLE */}
-        {step === 3 && (
-          <div className="p-6 md:p-8 space-y-6">
-            <h2 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
-              <Calendar className="w-5 h-5 text-indigo-600" />
-              <span>4. Selecciona Fecha y Hora</span>
-            </h2>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* DATE PICKER */}
-              <div className="space-y-2">
-                <label className="text-xs text-slate-500 font-semibold uppercase tracking-wider block">Elige un Día</label>
-                <input
-                  type="date"
-                  value={selectedDate}
-                  min={new Date().toISOString().split('T')[0]}
-                  onChange={(e) => {
-                    setSelectedDate(e.target.value);
-                    setSelectedTime('');
-                  }}
-                  className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-800 focus:outline-none focus:border-indigo-500"
-                />
-                <p className="text-[10px] text-slate-400 leading-normal mt-1">
-                  Nota: Solo mostramos días habilitados según el horario comercial de la sucursal y la jornada del barbero.
-                </p>
+                </div>
               </div>
+            </div>
+          )}
 
-              {/* SLOTS LIST */}
-              <div className="space-y-2">
-                <label className="text-xs text-slate-500 font-semibold uppercase tracking-wider block">Horarios Disponibles</label>
-                
-                {availableSlots.length === 0 ? (
-                  <div className="p-4 rounded-xl border border-slate-150 bg-slate-50 text-center text-xs text-slate-450">
-                    No hay horarios disponibles para {selectedDate}. Selecciona otra fecha o barbero.
+          {step === 4 && (
+            <form onSubmit={this.handleFinalizeBooking} className="p-6 md:p-8 space-y-6">
+              <h2 className="text-lg font-bold text-slate-800 dark:text-white mb-4 flex items-center gap-2">
+                <Smile className="w-5 h-5 text-navy-700 dark:text-navy-300" />
+                <span>5. Ingresa tus Datos Personales</span>
+              </h2>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-xs text-slate-500 dark:text-slate-400 font-semibold uppercase block">
+                    Nombres *
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      required
+                      placeholder="Ej. Juan de Dios"
+                      value={firstName}
+                      onChange={e => this.setState({ firstName: e.target.value })}
+                      className="w-full bg-white dark:bg-[#12233B] border border-slate-200 dark:border-[#243D63] rounded-xl pl-10 pr-4 py-2.5 text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:border-navy-700 dark:focus:border-navy-400"
+                    />
+                    <User className="w-4 h-4 text-slate-400 absolute left-3 top-3.5" />
                   </div>
-                ) : (
-                  <div className="grid grid-cols-3 gap-2 max-h-56 overflow-y-auto pr-1">
-                    {availableSlots.map((slot) => (
-                      <button
-                        key={slot.time}
-                        disabled={!slot.available}
-                        onClick={() => setSelectedTime(slot.time)}
-                        className={`py-2 text-center text-xs rounded-lg font-semibold transition-all border ${
-                          selectedTime === slot.time
-                            ? 'bg-indigo-600 text-white border-indigo-600 shadow-md shadow-indigo-600/10'
-                            : slot.available
-                            ? 'bg-white text-slate-700 border-slate-200 hover:border-indigo-500'
-                            : 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed line-through'
-                        }`}
-                        title={slot.reason}
-                      >
-                        {slot.time}
-                      </button>
-                    ))}
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs text-slate-500 dark:text-slate-400 font-semibold uppercase block">
+                    Apellidos *
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      required
+                      placeholder="Ej. Mamani Flores"
+                      value={lastName}
+                      onChange={e => this.setState({ lastName: e.target.value })}
+                      className="w-full bg-white dark:bg-[#12233B] border border-slate-200 dark:border-[#243D63] rounded-xl pl-10 pr-4 py-2.5 text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:border-navy-700 dark:focus:border-navy-400"
+                    />
+                    <User className="w-4 h-4 text-slate-400 absolute left-3 top-3.5" />
                   </div>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
+                </div>
 
-        {/* STEP 4: CONFIRMACIÓN Y CONTACTO */}
-        {step === 4 && (
-          <form onSubmit={handleFinalizeBooking} className="p-6 md:p-8 space-y-6">
-            <h2 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
-              <Smile className="w-5 h-5 text-indigo-600" />
-              <span>5. Ingresa tus Datos Personales</span>
-            </h2>
+                <div className="space-y-1.5">
+                  <label className="text-xs text-slate-500 dark:text-slate-400 font-semibold uppercase block">
+                    Teléfono Celular *
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="tel"
+                      required
+                      placeholder="Ej. 71523456"
+                      value={phone}
+                      onChange={e => this.setState({ phone: e.target.value })}
+                      className="w-full bg-white dark:bg-[#12233B] border border-slate-200 dark:border-[#243D63] rounded-xl pl-10 pr-4 py-2.5 text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:border-navy-700 dark:focus:border-navy-400 font-mono"
+                    />
+                    <Phone className="w-4 h-4 text-slate-400 absolute left-3 top-3.5" />
+                  </div>
+                </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-1.5">
-                <label className="text-xs text-slate-500 font-semibold uppercase block">Nombre Completo *</label>
-                <div className="relative">
-                  <input
-                    type="text"
-                    required
-                    placeholder="Ej. Juan Pérez"
-                    value={fullName}
-                    onChange={(e) => setFullName(e.target.value)}
-                    className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-4 py-2.5 text-sm text-slate-800 focus:outline-none focus:border-indigo-500"
+                <div className="space-y-1.5 md:col-span-2">
+                  <label className="text-xs text-slate-500 dark:text-slate-400 font-semibold uppercase block">
+                    Correo Electrónico *
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="email"
+                      required
+                      placeholder="Ej. juan.perez@example.com"
+                      value={email}
+                      onChange={e => this.setState({ email: e.target.value })}
+                      className="w-full bg-white dark:bg-[#12233B] border border-slate-200 dark:border-[#243D63] rounded-xl pl-10 pr-4 py-2.5 text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:border-navy-700 dark:focus:border-navy-400"
+                    />
+                    <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-3.5" />
+                  </div>
+                  <p className="text-[10px] text-slate-400 leading-normal mt-1">
+                    Te asociaremos un perfil automático con tu correo o celular para que consultes tu historial sin duplicar cuentas.
+                  </p>
+                </div>
+
+                <div className="space-y-1.5 md:col-span-2">
+                  <label className="text-xs text-slate-500 dark:text-slate-400 font-semibold block uppercase">
+                    Indicaciones especiales / Notas (Opcional)
+                  </label>
+                  <textarea
+                    placeholder="Escribe alguna indicación (Ej. Cita para niño, estilo específico, etc.)"
+                    value={notes}
+                    onChange={e => this.setState({ notes: e.target.value })}
+                    className="w-full bg-white dark:bg-[#12233B] border border-slate-200 dark:border-[#243D63] rounded-xl px-4 py-2.5 text-sm text-slate-800 dark:text-slate-100 h-20 focus:outline-none focus:border-navy-700 dark:focus:border-navy-400 resize-none"
                   />
-                  <User className="w-4 h-4 text-slate-400 absolute left-3 top-3.5" />
                 </div>
               </div>
 
-              <div className="space-y-1.5">
-                <label className="text-xs text-slate-500 font-semibold uppercase block">Teléfono Celular *</label>
-                <div className="relative">
-                  <input
-                    type="tel"
-                    required
-                    placeholder="Ej. 71523456"
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                    className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-4 py-2.5 text-sm text-slate-800 focus:outline-none focus:border-indigo-500"
-                  />
-                  <Phone className="w-4 h-4 text-slate-400 absolute left-3 top-3.5" />
-                </div>
-              </div>
-
-              <div className="space-y-1.5 md:col-span-2">
-                <label className="text-xs text-slate-500 font-semibold uppercase block">Correo Electrónico *</label>
-                <div className="relative">
-                  <input
-                    type="email"
-                    required
-                    placeholder="Ej. juan.perez@example.com"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-4 py-2.5 text-sm text-slate-800 focus:outline-none focus:border-indigo-500"
-                  />
-                  <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-3.5" />
-                </div>
-                <p className="text-[10px] text-slate-400 leading-normal mt-1">
-                  💡 Te asociaremos un perfil automático con tu correo o celular para que consultes tu historial sin duplicar cuentas.
-                </p>
-              </div>
-
-              <div className="space-y-1.5 md:col-span-2">
-                <label className="text-xs text-slate-500 font-semibold block uppercase">Indicaciones especiales / Notas (Opcional)</label>
-                <textarea
-                  placeholder="Escribe alguna indicación (Ej. Cita para niño, estilo específico, etc.)"
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-800 h-20 focus:outline-none focus:border-indigo-500 resize-none"
-                />
-              </div>
-            </div>
-
-            {/* RESUMEN EN TARJETA */}
-            <div className="p-4 bg-slate-50 border border-slate-150 rounded-xl space-y-2">
-              <span className="text-[10px] uppercase font-bold text-indigo-600 tracking-wider">Resumen de tu Reserva</span>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pt-1">
-                <div>
-                  <span className="text-[10px] text-slate-450 block font-medium">Servicio</span>
-                  <span className="text-xs font-bold text-slate-800 block truncate">{activeService?.name}</span>
-                </div>
-                <div>
-                  <span className="text-[10px] text-slate-450 block font-medium">Barbero</span>
-                  <span className="text-xs font-bold text-slate-800 block">{activeEmployee?.fullName}</span>
-                </div>
-                <div>
-                  <span className="text-[10px] text-slate-450 block font-medium">Fecha y Hora</span>
-                  <span className="text-xs font-bold text-indigo-600 block">{formatDateLegible(selectedDate)} a las {selectedTime}</span>
-                </div>
-                <div>
-                  <span className="text-[10px] text-slate-450 block font-medium">Inversión</span>
-                  <span className="text-xs font-black text-slate-800 block">{formatCurrency(activeService?.price || 0)}</span>
-                </div>
-              </div>
-            </div>
-
-            <button
-              type="submit"
-              className="w-full bg-indigo-600 text-white py-3 rounded-xl font-bold tracking-wide hover:bg-indigo-700 transition-all cursor-pointer flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/10"
-            >
-              <span>Confirmar Reserva y Crear Ticket</span>
-              <ArrowRight className="w-4 h-4" />
-            </button>
-          </form>
-        )}
-
-        {/* STEP 5: TICKET EXITOSO */}
-        {step === 5 && createdApt && (
-          <div className="p-6 md:p-8 text-center space-y-6">
-            <div className="w-16 h-16 rounded-full bg-emerald-50 border border-emerald-200 flex items-center justify-center mx-auto text-emerald-600">
-              <CheckCircle className="w-8 h-8 stroke-[2.5]" />
-            </div>
-
-            <div>
-              <h2 className="text-2xl font-black text-slate-900">¡Reserva Completada!</h2>
-              <p className="text-sm text-slate-500 mt-1">Tu cita ha sido guardada en nuestra base de datos con éxito.</p>
-            </div>
-
-            {/* DISEÑO TICKET IMPRESO */}
-            <div className="max-w-md mx-auto bg-white border border-slate-200 rounded-xl overflow-hidden shadow-xl relative text-left">
-              {/* Decoración superior ticket */}
-              <div className="h-1.5 bg-gradient-to-r from-indigo-500 to-indigo-600 w-full" />
-              
-              <div className="p-5 space-y-4">
-                <div className="flex justify-between items-start border-b border-slate-100 pb-3">
+              <div className="p-4 bg-slate-50 dark:bg-[#12233B] border border-slate-200 dark:border-[#243D63] rounded-xl space-y-2">
+                <span className="text-[10px] uppercase font-bold text-navy-700 dark:text-navy-300 tracking-wider">
+                  Resumen de tu Reserva
+                </span>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pt-1">
                   <div>
-                    <span className="text-[9px] uppercase tracking-widest font-black text-indigo-600 block">Ticket de Reserva</span>
-                    <span className="text-xs text-slate-400 block mt-0.5">ID: {createdApt.id}</span>
+                    <span className="text-[10px] text-slate-500 dark:text-slate-400 block font-medium">Servicio</span>
+                    <span className="text-xs font-bold text-slate-800 dark:text-white block truncate">
+                      {activeService?.name}
+                    </span>
                   </div>
-                  <div className="bg-emerald-50 text-emerald-600 text-[10px] font-bold px-2 py-0.5 rounded border border-emerald-200 uppercase">
-                    Confirmado
+                  <div>
+                    <span className="text-[10px] text-slate-500 dark:text-slate-400 block font-medium">Barbero</span>
+                    <span className="text-xs font-bold text-slate-800 dark:text-white block">
+                      {activeEmployee?.fullName}
+                    </span>
                   </div>
-                </div>
-
-                <div className="space-y-2.5 text-xs text-slate-700">
-                  <div className="flex justify-between">
-                    <span className="text-slate-400">Sucursal:</span>
-                    <span className="font-bold text-slate-800">{activeBranch?.name}</span>
+                  <div>
+                    <span className="text-[10px] text-slate-500 dark:text-slate-400 block font-medium">
+                      Fecha y Hora
+                    </span>
+                    <span className="text-xs font-bold text-navy-800 dark:text-navy-300 block">
+                      {DateTimeHelper.formatLegible(selectedDate)} a las {selectedTime}
+                    </span>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-400">Cliente:</span>
-                    <span className="font-bold text-slate-800">{fullName}</span>
+                  <div>
+                    <span className="text-[10px] text-slate-500 dark:text-slate-400 block font-medium">Inversión</span>
+                    <span className="text-xs font-black text-slate-900 dark:text-white block font-mono">
+                      {CurrencyFormatter.format(activeService?.price || 0)}
+                    </span>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-400">Servicio:</span>
-                    <span className="font-bold text-slate-800 text-right max-w-[200px] truncate">{activeService?.name}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-400">Barbero:</span>
-                    <span className="font-bold text-slate-800">{activeEmployee?.fullName}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-400">Fecha:</span>
-                    <span className="font-bold text-slate-800">{formatDateLegible(createdApt.date)}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-400">Hora:</span>
-                    <span className="font-bold text-indigo-600">{createdApt.startTime} a {createdApt.endTime}</span>
-                  </div>
-                </div>
-
-                <div className="border-t border-slate-100 pt-3 flex justify-between items-center">
-                  <span className="text-xs text-slate-550">Total pagado / por pagar:</span>
-                  <span className="text-lg font-black text-indigo-600">{formatCurrency(createdApt.price)}</span>
                 </div>
               </div>
 
-              {/* Decoración corte ticket */}
-              <div className="flex justify-between px-2 -mb-2">
-                {[...Array(12)].map((_, i) => (
-                  <div key={i} className="w-4 h-4 bg-slate-50 rounded-full" />
-                ))}
+              <button
+                type="submit"
+                className="w-full bg-navy-800 hover:bg-navy-700 dark:bg-navy-600 dark:hover:bg-navy-500 text-white py-3 rounded-xl font-bold tracking-wide transition-all cursor-pointer flex items-center justify-center gap-2 shadow-lg"
+              >
+                <span>Confirmar Reserva y Crear Ticket</span>
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            </form>
+          )}
+
+          {step === 5 && createdApt && (
+            <div className="p-6 md:p-8 text-center space-y-6">
+              <div className="w-16 h-16 rounded-full bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800 flex items-center justify-center mx-auto text-emerald-600 dark:text-emerald-400">
+                <CheckCircle className="w-8 h-8 stroke-[2.5]" />
+              </div>
+
+              <div>
+                <h2 className="text-2xl font-black text-slate-900 dark:text-white">¡Reserva Completada!</h2>
+                <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+                  Tu cita ha sido guardada en nuestra base de datos con éxito.
+                </p>
+              </div>
+
+              <div className="max-w-md mx-auto bg-white dark:bg-[#12233B] border border-slate-200 dark:border-[#243D63] rounded-xl overflow-hidden shadow-xl relative text-left">
+                <div className="h-1.5 bg-navy-800 dark:bg-navy-500 w-full" />
+
+                <div className="p-5 space-y-4">
+                  <div className="flex justify-between items-start border-b border-slate-100 dark:border-[#1E3354] pb-3">
+                    <div>
+                      <span className="text-[9px] uppercase tracking-widest font-black text-navy-700 dark:text-navy-300 block">
+                        Ticket de Reserva
+                      </span>
+                      <span className="text-xs text-slate-400 block mt-0.5 font-mono">ID: {createdApt.id}</span>
+                    </div>
+                    <div className="bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 text-[10px] font-bold px-2 py-0.5 rounded border border-emerald-200 dark:border-emerald-800 uppercase">
+                      Confirmado
+                    </div>
+                  </div>
+
+                  <div className="space-y-2.5 text-xs text-slate-700 dark:text-slate-200">
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">Sucursal:</span>
+                      <span className="font-bold text-slate-800 dark:text-white">{activeBranch?.name}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">Cliente:</span>
+                      <span className="font-bold text-slate-800 dark:text-white">
+                        {`${firstName} ${lastName}`.trim()}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">Servicio:</span>
+                      <span className="font-bold text-slate-800 dark:text-white text-right max-w-[200px] truncate">
+                        {activeService?.name}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">Barbero:</span>
+                      <span className="font-bold text-slate-800 dark:text-white">{activeEmployee?.fullName}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">Fecha:</span>
+                      <span className="font-bold text-slate-800 dark:text-white">
+                        {DateTimeHelper.formatLegible(createdApt.date)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">Hora:</span>
+                      <span className="font-bold text-navy-700 dark:text-navy-300 font-mono">
+                        {createdApt.startTime} a {createdApt.endTime}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="border-t border-slate-100 dark:border-[#1E3354] pt-3 flex justify-between items-center">
+                    <span className="text-xs text-slate-500 dark:text-slate-400">Total pagado / por pagar:</span>
+                    <span className="text-lg font-black text-navy-800 dark:text-navy-300 font-mono">
+                      {CurrencyFormatter.format(createdApt.price)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex flex-col sm:flex-row gap-3 justify-center pt-2">
+                <a
+                  href={WhatsAppUrlBuilder.buildApiUrl(
+                    phone,
+                    `¡Hola, ${`${firstName} ${lastName}`.trim()}! Te saludamos de Barbería Josué 🇧🇴\n\nConfirmamos tu cita agendada:\n✂️ *Servicio:* ${activeService?.name}\n💈 *Barbero:* ${activeEmployee?.fullName}\n📅 *Fecha:* ${DateTimeHelper.formatLegible(createdApt.date)}\n⏰ *Hora:* ${createdApt.startTime} a ${createdApt.endTime}\n\n📍 *Sucursal:* ${activeBranch?.name}\n🏠 *Dirección:* ${activeBranch?.address}\n\n¡Gracias por tu preferencia! Te esperamos.`
+                  )}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg flex items-center justify-center gap-2 transition-all shadow-md cursor-pointer"
+                >
+                  <MessageSquare className="w-4 h-4 stroke-[2]" />
+                  <span>Enviar Aviso por WhatsApp</span>
+                </a>
+                <button
+                  onClick={this.handleResetBooking}
+                  className="px-5 py-2.5 bg-slate-100 dark:bg-[#12233B] border border-slate-200 dark:border-[#243D63] text-xs font-bold rounded-lg hover:bg-slate-200 dark:hover:bg-[#182E4D] transition-all cursor-pointer text-slate-800 dark:text-slate-100"
+                >
+                  Agendar otra cita
+                </button>
               </div>
             </div>
+          )}
 
-            <div className="flex flex-col sm:flex-row gap-3 justify-center pt-2">
-              <a
-                href={`https://api.whatsapp.com/send?phone=${phone.replace(/[^0-9]/g, '').startsWith('591') ? phone.replace(/[^0-9]/g, '') : '591' + phone.replace(/[^0-9]/g, '')}&text=${encodeURIComponent(
-                  `¡Hola, ${fullName}! Te saludamos de Barbería Josué 🇧🇴\n\nConfirmamos tu cita agendada:\n✂️ *Servicio:* ${activeService?.name}\n💈 *Barbero:* ${activeEmployee?.fullName}\n📅 *Fecha:* ${formatDateLegible(createdApt.date)}\n⏰ *Hora:* ${createdApt.startTime} a ${createdApt.endTime}\n\n📍 *Sucursal:* ${activeBranch?.name}\n🏠 *Dirección:* ${activeBranch?.address}\n\n¡Gracias por tu preferencia! Te esperamos.`
-                )}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg flex items-center justify-center gap-2 transition-all shadow-md shadow-emerald-600/10 cursor-pointer"
-              >
-                <MessageSquare className="w-4 h-4 stroke-[2]" />
-                <span>Enviar Aviso por WhatsApp</span>
-              </a>
+          {step < 4 && (
+            <div className="bg-slate-50 dark:bg-[#0A1526] border-t border-slate-200 dark:border-[#1E3354] px-6 py-4 flex justify-between items-center">
               <button
-                onClick={() => {
-                  // Reset form fields
-                  setSelectedServiceId('');
-                  setSelectedEmployeeId('');
-                  setSelectedTime('');
-                  setFullName('');
-                  setPhone('');
-                  setEmail('');
-                  setNotes('');
-                  setStep(1);
-                }}
-                className="px-5 py-2.5 bg-slate-100 border border-slate-200 text-xs font-bold rounded-lg hover:bg-slate-200 transition-all cursor-pointer text-slate-800"
+                onClick={this.handlePrevStep}
+                disabled={step === 1}
+                className={`px-4 py-2 rounded-lg text-xs font-bold border transition-all flex items-center gap-1.5 ${
+                  step === 1
+                    ? 'border-slate-200 dark:border-[#1E3354] bg-slate-100 dark:bg-[#0D1A2D] text-slate-400 dark:text-slate-600 cursor-not-allowed'
+                    : 'border-slate-200 dark:border-[#243D63] bg-white dark:bg-[#12233B] text-slate-700 dark:text-slate-200 hover:border-navy-400 cursor-pointer'
+                }`}
               >
-                Agendar otra cita
+                <ArrowLeft className="w-3.5 h-3.5" />
+                <span>Atrás</span>
+              </button>
+
+              <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 font-mono">
+                Paso {step} de 4
+              </span>
+
+              <button
+                onClick={this.handleNextStep}
+                className="px-4 py-2 bg-navy-800 hover:bg-navy-700 dark:bg-navy-600 dark:hover:bg-navy-500 text-white text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 cursor-pointer shadow-md"
+              >
+                <span>Continuar</span>
+                <ChevronRight className="w-4 h-4" />
               </button>
             </div>
-          </div>
-        )}
-
-        {/* CONTROLES / NAVEGACIÓN BOTTOM */}
-        {step < 4 && (
-          <div className="bg-slate-50 border-t border-slate-200 px-6 py-4 flex justify-between items-center">
-            <button
-              onClick={handlePrevStep}
-              disabled={step === 1}
-              className={`px-4 py-2 rounded-lg text-xs font-bold border transition-all flex items-center gap-1.5 ${
-                step === 1
-                  ? 'border-slate-100 bg-slate-100 text-slate-400 cursor-not-allowed'
-                  : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300 cursor-pointer'
-              }`}
-            >
-              <ArrowLeft className="w-3.5 h-3.5" />
-              <span>Atrás</span>
-            </button>
-
-            <span className="text-xs font-semibold text-slate-400">Pasos {step} de 4</span>
-
-            <button
-              onClick={handleNextStep}
-              className="px-4 py-2 bg-indigo-600 text-white text-xs font-bold rounded-lg hover:bg-indigo-700 transition-all flex items-center gap-1.5 cursor-pointer shadow-md shadow-indigo-600/10"
-            >
-              <span>Continuar</span>
-              <ChevronRight className="w-4 h-4" />
-            </button>
-          </div>
-        )}
+          )}
+        </div>
       </div>
-    </div>
-  );
-};
+    );
+  }
+}

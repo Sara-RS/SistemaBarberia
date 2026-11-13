@@ -139,6 +139,7 @@ export type Employee = Empleado;
 export interface Servicio {
   id: string;
   empresaId?: string;
+  codigo?: string;
   nombre?: string;
   descripcion?: string;
   precio?: number;
@@ -152,6 +153,7 @@ export interface Servicio {
 
   // Compatibilidad
   tenantId?: string;
+  code?: string;
   name?: string;
   description?: string;
   price?: number;
@@ -331,6 +333,8 @@ export interface Compra {
   proveedorId?: string;
   numeroFactura?: string;
   estado?: 'pending' | 'completed' | 'cancelled';
+  metodoPago?: 'cash' | 'transfer' | 'card' | 'credit';
+  notas?: string;
   total?: number;
   fecha?: string;
   detalles?: DetalleCompra[];
@@ -341,6 +345,8 @@ export interface Compra {
   providerId?: string;
   invoiceNumber?: string;
   status?: 'pending' | 'completed' | 'cancelled';
+  paymentMethod?: 'cash' | 'transfer' | 'card' | 'credit';
+  notes?: string;
   date?: string;
   items?: DetalleCompra[];
   createdAt?: string;
@@ -354,12 +360,18 @@ export interface DetalleCompra {
   productoId?: string;
   cantidad?: number;
   costo?: number;
+  margenUtilidad?: number;
+  precioVenta?: number;
+  actualizarPrecioVenta?: boolean;
 
   // Compatibilidad
   purchaseId?: string;
   productId?: string;
   quantity?: number;
   cost?: number;
+  profitMargin?: number;
+  salePrice?: number;
+  updateSalePrice?: boolean;
 }
 export type PurchaseItem = DetalleCompra;
 

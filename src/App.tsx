@@ -3,8 +3,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
-import { AppProvider, useApp } from './context/AppContext';
+import React from 'react';
+import { AppProvider, BaseAppComponent } from './context/AppContext';
 import { Layout } from './components/shared/Layout';
 
 // Client-facing Views
@@ -17,20 +17,33 @@ import { Dashboard } from './components/admin/Dashboard';
 import { CalendarView } from './components/admin/CalendarView';
 import { SalesPOS } from './components/admin/SalesPOS';
 import { InventoryAdmin } from './components/admin/InventoryAdmin';
+import { PurchasesAdmin } from './components/admin/PurchasesAdmin';
+import { ProvidersAdmin } from './components/admin/ProvidersAdmin';
 import { ServicesAdmin } from './components/admin/ServicesAdmin';
 import { StaffAdmin } from './components/admin/StaffAdmin';
 import { ClientsAdmin } from './components/admin/ClientsAdmin';
 import { SettingsAdmin } from './components/admin/SettingsAdmin';
 import { WhatsAppReminders } from './components/admin/WhatsAppReminders';
 
-const WorkspaceSwitcher: React.FC = () => {
-  // Por default iniciamos en el Dashboard administrativo (el rol inicial es 'admin')
-  const [activeTab, setActiveTab] = useState('dashboard');
-  const { currentRole } = useApp();
+interface WorkspaceSwitcherState {
+  activeTab: string;
+}
 
-  const renderActiveView = () => {
+export class WorkspaceSwitcher extends BaseAppComponent<{}, WorkspaceSwitcherState> {
+  constructor(props: {}) {
+    super(props);
+    this.state = {
+      activeTab: 'dashboard',
+    };
+  }
+
+  private handleSetActiveTab = (tab: string): void => {
+    this.setState({ activeTab: tab });
+  };
+
+  private renderActiveView(): React.ReactNode {
+    const { activeTab } = this.state;
     switch (activeTab) {
-      // Client Views
       case 'booking':
         return <ClientBooking />;
       case 'client-history':
@@ -38,7 +51,6 @@ const WorkspaceSwitcher: React.FC = () => {
       case 'branch-info':
         return <BranchInfo />;
 
-      // Admin Panel Views
       case 'dashboard':
         return <Dashboard />;
       case 'calendar':
@@ -48,6 +60,10 @@ const WorkspaceSwitcher: React.FC = () => {
         return <SalesPOS />;
       case 'inventory':
         return <InventoryAdmin />;
+      case 'purchases':
+        return <PurchasesAdmin />;
+      case 'providers':
+        return <ProvidersAdmin />;
       case 'services':
         return <ServicesAdmin />;
       case 'staff':
@@ -62,19 +78,23 @@ const WorkspaceSwitcher: React.FC = () => {
       default:
         return <Dashboard />;
     }
-  };
+  }
 
-  return (
-    <Layout activeTab={activeTab} setActiveTab={setActiveTab}>
-      {renderActiveView()}
-    </Layout>
-  );
-};
+  public render(): React.ReactNode {
+    return (
+      <Layout activeTab={this.state.activeTab} setActiveTab={this.handleSetActiveTab}>
+        {this.renderActiveView()}
+      </Layout>
+    );
+  }
+}
 
-export default function App() {
-  return (
-    <AppProvider>
-      <WorkspaceSwitcher />
-    </AppProvider>
-  );
+export default class App extends React.Component {
+  public render(): React.ReactNode {
+    return (
+      <AppProvider>
+        <WorkspaceSwitcher />
+      </AppProvider>
+    );
+  }
 }

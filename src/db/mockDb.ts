@@ -27,7 +27,17 @@ import {
 } from '../types';
 import { getTodayStr, getOffsetDateStr } from '../utils/helpers';
 
-class MockDatabase {
+export interface IDataRepository {
+  getCompanyInfo(): CompanyInfo;
+  updateCompanyInfo(updates: Partial<CompanyInfo>): CompanyInfo;
+  getBranches(): Branch[];
+  getEmployees(branchId?: string): Employee[];
+  getServices(): Service[];
+  getClients(): Client[];
+  getAppointments(branchId?: string, dateStr?: string): Appointment[];
+}
+
+export class MockDatabase implements IDataRepository {
   private storageKey = 'barberia_josue_db_v1';
 
   // State
@@ -302,6 +312,8 @@ class MockDatabase {
       {
         id: 'ser-corte',
         tenantId,
+        codigo: 'SRV-001',
+        code: 'SRV-001',
         name: 'Corte de Cabello Tradicional',
         description: 'Servicio de corte con tijera o máquina, incluye lavado con shampoo premium, toalla caliente y peinado con cera.',
         price: 35,
@@ -315,6 +327,8 @@ class MockDatabase {
       {
         id: 'ser-barba',
         tenantId,
+        codigo: 'SRV-002',
+        code: 'SRV-002',
         name: 'Perfilado y Ritual de Barba',
         description: 'Ritual de afeitado tradicional con navaja libre, toalla caliente hidratante, aceites esenciales y masaje relajante.',
         price: 20,
@@ -328,6 +342,8 @@ class MockDatabase {
       {
         id: 'ser-combo',
         tenantId,
+        codigo: 'SRV-003',
+        code: 'SRV-003',
         name: 'Combo Corte + Perfilado de Barba',
         description: 'Nuestra firma. Servicio completo de corte de cabello clásico y ritual de barba completo. Ahorro especial.',
         price: 50,
@@ -341,6 +357,8 @@ class MockDatabase {
       {
         id: 'ser-facial',
         tenantId,
+        codigo: 'SRV-004',
+        code: 'SRV-004',
         name: 'Limpieza Facial Exfoliante',
         description: 'Tratamiento facial rápido con mascarilla negra, exfoliación suave, toalla tibia y crema revitalizante.',
         price: 20,
@@ -553,12 +571,57 @@ class MockDatabase {
         providerId: provider1Id,
         invoiceNumber: 'FAC-2026-904',
         status: 'completed',
-        total: 1900,
+        paymentMethod: 'transfer',
+        notes: 'Abastecimiento mensual de productos de styling y cuidado.',
+        total: 2600,
         date: '2026-06-15',
         items: [
-          { id: 'pitem-1', purchaseId: 'pur-1', productId: 'prod-cera', quantity: 20, cost: 95 },
+          {
+            id: 'pitem-1',
+            purchaseId: 'pur-1',
+            productId: 'prod-cera',
+            quantity: 20,
+            cost: 95,
+            profitMargin: 89.47,
+            salePrice: 180,
+            updateSalePrice: true,
+          },
+          {
+            id: 'pitem-2',
+            purchaseId: 'pur-1',
+            productId: 'prod-aceite',
+            quantity: 10,
+            cost: 110,
+            profitMargin: 100,
+            salePrice: 220,
+            updateSalePrice: true,
+          },
         ],
         createdAt: '2026-06-15T12:00:00Z',
+      },
+      {
+        id: 'pur-2',
+        branchId: branch1Id,
+        providerId: provider2Id,
+        invoiceNumber: 'FAC-2026-918',
+        status: 'completed',
+        paymentMethod: 'cash',
+        notes: 'Pedido de shampoo profesional y tónicos capilares.',
+        total: 1450,
+        date: '2026-07-02',
+        items: [
+          {
+            id: 'pitem-3',
+            purchaseId: 'pur-2',
+            productId: 'prod-shampoo',
+            quantity: 10,
+            cost: 145,
+            profitMargin: 100,
+            salePrice: 290,
+            updateSalePrice: true,
+          },
+        ],
+        createdAt: '2026-07-02T10:30:00Z',
       },
     ];
 
@@ -800,8 +863,11 @@ class MockDatabase {
 
   // Services
   public createService(ser: Omit<Service, 'id' | 'createdAt'>): Service {
+    const generatedCode = ser.codigo || ser.code || `SRV-${String(this.services.length + 1).padStart(3, '0')}`;
     const newService: Service = {
       ...ser,
+      codigo: generatedCode,
+      code: generatedCode,
       id: `ser-${Math.random().toString(36).substr(2, 9)}`,
       createdAt: new Date().toISOString(),
     };
@@ -813,7 +879,13 @@ class MockDatabase {
   public updateService(id: string, updates: Partial<Service>): Service {
     const idx = this.services.findIndex(s => s.id === id);
     if (idx === -1) throw new Error('Servicio no encontrado');
-    this.services[idx] = { ...this.services[idx], ...updates } as Service;
+    const updatedCode = updates.codigo || updates.code || this.services[idx].codigo || this.services[idx].code;
+    this.services[idx] = {
+      ...this.services[idx],
+      ...updates,
+      codigo: updatedCode,
+      code: updatedCode,
+    } as Service;
     this.save();
     return this.services[idx];
   }
@@ -878,9 +950,29 @@ class MockDatabase {
     return newProv;
   }
 
-  public createPurchase(pur: Omit<Purchase, 'id' | 'createdAt' | 'total'>, items: Omit<PurchaseItem, 'id' | 'purchaseId'>[]): Purchase {
+  public updateProvider(id: string, updates: Partial<Provider>): Provider {
+    const idx = this.providers.findIndex(p => p.id === id);
+    if (idx === -1) throw new Error('Proveedor no encontrado');
+    this.providers[idx] = { ...this.providers[idx], ...updates } as Provider;
+    this.save();
+    return this.providers[idx];
+  }
+
+  public deleteProvider(id: string): void {
+    this.providers = this.providers.filter(p => p.id !== id);
+    this.save();
+  }
+
+  public createPurchase(
+    pur: Omit<Purchase, 'id' | 'createdAt' | 'total'>,
+    items: (Omit<PurchaseItem, 'id' | 'purchaseId'> & {
+      profitMargin?: number;
+      salePrice?: number;
+      updateSalePrice?: boolean;
+    })[]
+  ): Purchase {
     const purchaseId = `pur-${Math.random().toString(36).substr(2, 9)}`;
-    const computedTotal = items.reduce((acc, item) => acc + (item.quantity * item.cost), 0);
+    const computedTotal = items.reduce((acc, item) => acc + ((item.quantity || 0) * (item.cost || 0)), 0);
     
     const mappedItems: PurchaseItem[] = items.map(item => ({
       ...item,
@@ -896,17 +988,46 @@ class MockDatabase {
       createdAt: new Date().toISOString(),
     };
 
-    this.purchases.push(newPur);
+    this.purchases.unshift(newPur);
 
-    // Si la compra se marca completada, aumentar automáticamente el inventario
-    if (pur.status === 'completed') {
-      mappedItems.forEach(item => {
-        this.adjustStock(pur.branchId, item.productId, item.quantity, `Compra Abastecimiento #${purchaseId}`, 'emp-carlos');
+    // Si la compra se marca completada o por defecto, aumentar automáticamente el inventario y actualizar costo/precio si se solicita
+    if (pur.status === 'completed' || !pur.status) {
+      items.forEach(item => {
+        const branchId = pur.branchId || 'branch-coyoacan';
+        if (item.productId && item.quantity > 0) {
+          // Aumentar existencia en el inventario
+          this.adjustStock(
+            branchId,
+            item.productId,
+            item.quantity,
+            `Compra Factura/Recibo #${pur.invoiceNumber || purchaseId}`,
+            'emp-carlos'
+          );
+
+          // Actualizar costo del producto y precio de venta de acuerdo al margen de utilidad
+          const prodIdx = this.products.findIndex(p => p.id === item.productId);
+          if (prodIdx !== -1) {
+            if (item.cost && item.cost > 0) {
+              this.products[prodIdx].cost = item.cost;
+            }
+            if (item.updateSalePrice && item.salePrice && item.salePrice > 0) {
+              this.products[prodIdx].price = item.salePrice;
+            }
+            if (pur.providerId) {
+              this.products[prodIdx].providerId = pur.providerId;
+            }
+          }
+        }
       });
     }
 
     this.save();
     return newPur;
+  }
+
+  public deletePurchase(id: string): void {
+    this.purchases = this.purchases.filter(p => p.id !== id);
+    this.save();
   }
 
   // Sales (POS)
