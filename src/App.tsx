@@ -6,6 +6,7 @@
 import React from 'react';
 import { AppProvider, AppContextProps, BaseAppComponent } from './context/AppContext';
 import { Layout } from './components/shared/Layout';
+import { auditService } from './services/auditService';
 
 // Client-facing Views
 import { ClientBooking } from './components/client/ClientBooking';
@@ -24,12 +25,31 @@ import { StaffAdmin } from './components/admin/StaffAdmin';
 import { ClientsAdmin } from './components/admin/ClientsAdmin';
 import { SettingsAdmin } from './components/admin/SettingsAdmin';
 import { WhatsAppReminders } from './components/admin/WhatsAppReminders';
+import { AuditLogsAdmin } from './components/admin/AuditLogsAdmin';
 
 interface WorkspaceSwitcherState {
   activeTab: string;
 }
 
 export class WorkspaceSwitcher extends BaseAppComponent<{}, WorkspaceSwitcherState> {
+  private static readonly TAB_LABELS: Record<string, string> = {
+    booking: 'Reservar Cita',
+    'client-history': 'Mis Reservas',
+    'branch-info': 'Sucursales',
+    dashboard: 'Dashboard',
+    calendar: 'Agenda',
+    purchases: 'Compras',
+    inventory: 'Inventario',
+    pos: 'Caja',
+    providers: 'Proveedores',
+    services: 'Servicios',
+    staff: 'Barberos',
+    clients: 'Clientes',
+    reminders: 'Recordatorios WhatsApp',
+    settings: 'Parametrización',
+    audit: 'Auditoría y Logs',
+  };
+
   constructor(props: {}, context: AppContextProps) {
     super(props, context);
     const isAdmin = Boolean(context?.isAdminAuthenticated && context?.currentRole === 'admin');
@@ -39,6 +59,17 @@ export class WorkspaceSwitcher extends BaseAppComponent<{}, WorkspaceSwitcherSta
   }
 
   private handleSetActiveTab = (tab: string): void => {
+    if (tab !== this.state.activeTab) {
+      const label = WorkspaceSwitcher.TAB_LABELS[tab] || tab;
+      auditService.recordPageEvent({
+        tipoEvento: 'PAGE_VIEW',
+        modulo: 'Navegación',
+        sucursalId: this.app.selectedBranchId,
+        resumen: `Acceso a vista "${label}" (${tab}).`,
+        detalles: { previousTab: this.state.activeTab, activeTab: tab, label },
+        nivel: 'INFO',
+      });
+    }
     this.setState({ activeTab: tab });
   };
 
@@ -89,6 +120,8 @@ export class WorkspaceSwitcher extends BaseAppComponent<{}, WorkspaceSwitcherSta
         return <WhatsAppReminders />;
       case 'settings':
         return <SettingsAdmin />;
+      case 'audit':
+        return <AuditLogsAdmin />;
 
       default:
         return <Dashboard />;

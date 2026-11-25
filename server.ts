@@ -8,6 +8,12 @@ import path from 'path';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI, ThinkingLevel, Content } from '@google/genai';
 import dotenv from 'dotenv';
+import {
+  ActorContext,
+  AdminAuthService,
+  DualDatabaseAuditManager,
+} from './server/auditDualDb';
+import { SvgCaptchaService } from './server/captchaService';
 
 // Cargar variables de entorno
 dotenv.config();
@@ -270,10 +276,92 @@ REGLAS DE RESPUESTA:
   }
 }
 
+/**
+ * Extractor OOP de contexto de actor autenticado o público desde la solicitud HTTP.
+ */
+class RequestContextExtractor {
+  private static readonly PUBLIC_CLIENT_MUTATIONS = new Set(['createClient', 'createAppointment']);
+  private static readonly ALLOWED_CLIENT_EVENTS = new Set([
+    'PAGE_VIEW',
+    'CHATBOT_QUERY',
+    'THEME_CHANGE',
+    'BRANCH_CHANGE',
+    'ROLE_SWITCH',
+    'EXPORT',
+  ]);
+
+  constructor(private readonly authService: AdminAuthService) {}
+
+  public getClientIp(req: Request): string {
+    const forwarded = req.headers['x-forwarded-for'];
+    if (typeof forwarded === 'string' && forwarded.trim()) {
+      return forwarded.split(',')[0].trim();
+    }
+    return req.socket?.remoteAddress || '127.0.0.1';
+  }
+
+  public getUserAgent(req: Request): string {
+    const ua = req.headers['user-agent'];
+    return typeof ua === 'string' ? ua.slice(0, 180) : 'BrowserClient';
+  }
+
+  public getActor(req: Request, clientHintName?: string): {
+    actor: ActorContext;
+    isAdmin: boolean;
+  } {
+    const session = this.authService.verifyBearerHeader(req.headers.authorization);
+    const ipOrigen = this.getClientIp(req);
+    const userAgent = this.getUserAgent(req);
+
+    if (session) {
+      return {
+        isAdmin: true,
+        actor: {
+          usuario: session.username,
+          rolUsuario: 'admin',
+          ipOrigen,
+          userAgent,
+        },
+      };
+    }
+
+    const cleanHint =
+      typeof clientHintName === 'string' && clientHintName.trim()
+        ? `Cliente (${clientHintName.trim().slice(0, 60)})`
+        : 'Cliente Público';
+
+    return {
+      isAdmin: false,
+      actor: {
+        usuario: cleanHint,
+        rolUsuario: 'client',
+        ipOrigen,
+        userAgent,
+      },
+    };
+  }
+
+  public isPublicMutation(action: string): boolean {
+    return RequestContextExtractor.PUBLIC_CLIENT_MUTATIONS.has(action);
+  }
+
+  public isAllowedPageEvent(tipoEvento: string, isAdmin: boolean): boolean {
+    if (isAdmin) {
+      return RequestContextExtractor.ALLOWED_CLIENT_EVENTS.has(tipoEvento) || tipoEvento === 'SYSTEM';
+    }
+    return RequestContextExtractor.ALLOWED_CLIENT_EVENTS.has(tipoEvento);
+  }
+}
+
 const app = express();
 const PORT = 3000;
 const geminiService = new GeminiAssistantService();
+const adminAuthService = new AdminAuthService();
+const dualDbAuditManager = new DualDatabaseAuditManager();
+const requestContextExtractor = new RequestContextExtractor(adminAuthService);
+const svgCaptchaService = new SvgCaptchaService();
 
+app.set('trust proxy', 1);
 app.use(express.json({ limit: '1mb' }));
 
 // 1. Healthcheck
@@ -281,7 +369,249 @@ app.get('/api/health', (_req: Request, res: Response) => {
   res.json({ status: 'ok', time: new Date().toISOString() });
 });
 
-// 2. IA - Chatbot de Atención al Cliente y Consultas de Barbería
+// 2. CAPTCHA y Autenticación Administrativa + Registro Automático en db_barberia_logs vía Trigger
+app.get('/api/auth/captcha', (_req: Request, res: Response) => {
+  res.setHeader('Cache-Control', 'no-store');
+  res.json(svgCaptchaService.generateChallenge());
+});
+
+app.post('/api/auth/login', (req: Request, res: Response) => {
+  const { username, password, captchaId, captchaAnswer } = req.body || {};
+  const ipOrigen = requestContextExtractor.getClientIp(req);
+  const userAgent = requestContextExtractor.getUserAgent(req);
+  const attemptedUser = String(username || '').trim().slice(0, 80) || 'Desconocido';
+
+  const captchaCheck = svgCaptchaService.verifyChallenge(
+    String(captchaId || ''),
+    String(captchaAnswer || '')
+  );
+
+  if (!captchaCheck.valid) {
+    dualDbAuditManager.logPageEvent(
+      {
+        usuario: attemptedUser,
+        rolUsuario: 'client',
+        ipOrigen,
+        userAgent,
+      },
+      {
+        tipoEvento: 'LOGIN_FAILED',
+        modulo: 'Autenticación',
+        resumen: `Fallo de verificación CAPTCHA en inicio de sesión para "${attemptedUser}".`,
+        detalles: { attemptedUsername: attemptedUser, outcome: 'CAPTCHA_FAILED' },
+        nivel: 'WARNING',
+      }
+    );
+
+    return res.status(400).json({
+      success: false,
+      captchaError: true,
+      error: captchaCheck.error || 'Código CAPTCHA inválido.',
+    });
+  }
+
+  const result = adminAuthService.authenticate(String(username || ''), String(password || ''));
+
+  if (result.success && result.token && result.username) {
+    dualDbAuditManager.logPageEvent(
+      {
+        usuario: result.username,
+        rolUsuario: 'admin',
+        ipOrigen,
+        userAgent,
+      },
+      {
+        tipoEvento: 'LOGIN',
+        modulo: 'Autenticación',
+        resumen: `Inicio de sesión administrativo exitoso para el usuario "${result.username}".`,
+        detalles: { username: result.username, outcome: 'SUCCESS' },
+        nivel: 'INFO',
+      }
+    );
+
+    return res.json({
+      success: true,
+      token: result.token,
+      username: result.username,
+    });
+  }
+
+  dualDbAuditManager.logPageEvent(
+    {
+      usuario: attemptedUser,
+      rolUsuario: 'client',
+      ipOrigen,
+      userAgent,
+    },
+    {
+      tipoEvento: 'LOGIN_FAILED',
+      modulo: 'Autenticación',
+      resumen: `Intento fallido de inicio de sesión administrativo con usuario "${attemptedUser}".`,
+      detalles: { attemptedUsername: attemptedUser, outcome: 'FAILED' },
+      nivel: 'WARNING',
+    }
+  );
+
+  return res.status(401).json({
+    success: false,
+    error: result.error || 'Credenciales incorrectas.',
+  });
+});
+
+app.post('/api/auth/logout', (req: Request, res: Response) => {
+  const { actor, isAdmin } = requestContextExtractor.getActor(req);
+  if (isAdmin) {
+    dualDbAuditManager.logPageEvent(actor, {
+      tipoEvento: 'LOGOUT',
+      modulo: 'Autenticación',
+      resumen: `Cierre de sesión administrativo del usuario "${actor.usuario}".`,
+      detalles: { username: actor.usuario },
+      nivel: 'INFO',
+    });
+  }
+  res.json({ success: true });
+});
+
+app.get('/api/auth/session', (req: Request, res: Response) => {
+  const session = adminAuthService.verifyBearerHeader(req.headers.authorization);
+  if (!session) {
+    return res.status(401).json({ authenticated: false });
+  }
+  res.json({ authenticated: true, username: session.username, role: session.role });
+});
+
+// 3. Doble Base de Datos & Triggers: Sincronización de Mutaciones (db_barberia -> db_barberia_logs)
+app.post('/api/audit/sync-mutation', (req: Request, res: Response) => {
+  try {
+    const { action, payload, actorHint } = req.body || {};
+    if (!action || typeof action !== 'string') {
+      return res.status(400).json({ error: 'Acción de base de datos requerida.' });
+    }
+
+    const { actor, isAdmin } = requestContextExtractor.getActor(req, actorHint);
+    if (!isAdmin && !requestContextExtractor.isPublicMutation(action)) {
+      return res.status(401).json({ error: 'Autenticación administrativa requerida para esta operación.' });
+    }
+
+    const result = dualDbAuditManager.syncDatabaseMutation(
+      actor,
+      action,
+      payload && typeof payload === 'object' ? payload : {}
+    );
+    res.json(result);
+  } catch (error: any) {
+    console.error('Error in /api/audit/sync-mutation:', error?.message || error);
+    res.status(500).json({ error: 'Error al registrar mutación en db_barberia.' });
+  }
+});
+
+// 4. Registro de Eventos de Página (Navegación, Chatbot, Tema, Exportación) vía Trigger en db_barberia
+app.post('/api/audit/event', (req: Request, res: Response) => {
+  try {
+    const { tipoEvento, modulo, sucursalId, resumen, detalles, nivel, actorHint } = req.body || {};
+    if (!tipoEvento || typeof tipoEvento !== 'string' || !resumen || typeof resumen !== 'string') {
+      return res.status(400).json({ error: 'tipoEvento y resumen son obligatorios.' });
+    }
+
+    const { actor, isAdmin } = requestContextExtractor.getActor(req, actorHint);
+    if (!requestContextExtractor.isAllowedPageEvent(tipoEvento, isAdmin)) {
+      return res.status(403).json({ error: 'Tipo de evento no permitido para este contexto.' });
+    }
+
+    const safeLevel = nivel === 'WARNING' || nivel === 'CRITICAL' ? nivel : 'INFO';
+    const result = dualDbAuditManager.logPageEvent(actor, {
+      tipoEvento,
+      modulo: typeof modulo === 'string' && modulo.trim() ? modulo.trim() : 'Navegación',
+      sucursalId: typeof sucursalId === 'string' ? sucursalId : null,
+      resumen: resumen.slice(0, 500),
+      detalles: detalles && typeof detalles === 'object' ? detalles : null,
+      nivel: safeLevel,
+    });
+
+    res.json(result);
+  } catch (error: any) {
+    console.error('Error in /api/audit/event:', error?.message || error);
+    res.status(500).json({ error: 'Error al registrar evento en auditoría.' });
+  }
+});
+
+// 5. Consulta, Resumen y Exportación de "db_barberia_logs" (Protegido por Sesión Admin)
+app.get('/api/audit/logs', (req: Request, res: Response) => {
+  const session = adminAuthService.verifyBearerHeader(req.headers.authorization);
+  if (!session) {
+    return res.status(401).json({ error: 'Acceso restringido a administradores autenticados.' });
+  }
+
+  try {
+    const data = dualDbAuditManager.queryLogs({
+      search: typeof req.query.search === 'string' ? req.query.search : undefined,
+      modulo: typeof req.query.modulo === 'string' ? req.query.modulo : undefined,
+      operacion: typeof req.query.operacion === 'string' ? req.query.operacion : undefined,
+      nivel: typeof req.query.nivel === 'string' ? req.query.nivel : undefined,
+      dateFrom: typeof req.query.dateFrom === 'string' ? req.query.dateFrom : undefined,
+      dateTo: typeof req.query.dateTo === 'string' ? req.query.dateTo : undefined,
+      limit: req.query.limit ? Number(req.query.limit) : 150,
+      offset: req.query.offset ? Number(req.query.offset) : 0,
+    });
+    res.json(data);
+  } catch (error: any) {
+    console.error('Error in /api/audit/logs:', error?.message || error);
+    res.status(500).json({ error: 'Error al consultar db_barberia_logs.' });
+  }
+});
+
+app.get('/api/audit/summary', (req: Request, res: Response) => {
+  const session = adminAuthService.verifyBearerHeader(req.headers.authorization);
+  if (!session) {
+    return res.status(401).json({ error: 'Acceso restringido a administradores autenticados.' });
+  }
+
+  try {
+    res.json(dualDbAuditManager.getAuditSummary());
+  } catch (error: any) {
+    console.error('Error in /api/audit/summary:', error?.message || error);
+    res.status(500).json({ error: 'Error al obtener resumen de auditoría.' });
+  }
+});
+
+app.get('/api/audit/export', (req: Request, res: Response) => {
+  const session = adminAuthService.verifyBearerHeader(req.headers.authorization);
+  if (!session) {
+    return res.status(401).json({ error: 'Acceso restringido a administradores autenticados.' });
+  }
+
+  try {
+    const csv = dualDbAuditManager.exportLogsCsv({
+      search: typeof req.query.search === 'string' ? req.query.search : undefined,
+      modulo: typeof req.query.modulo === 'string' ? req.query.modulo : undefined,
+      operacion: typeof req.query.operacion === 'string' ? req.query.operacion : undefined,
+      nivel: typeof req.query.nivel === 'string' ? req.query.nivel : undefined,
+      dateFrom: typeof req.query.dateFrom === 'string' ? req.query.dateFrom : undefined,
+      dateTo: typeof req.query.dateTo === 'string' ? req.query.dateTo : undefined,
+    });
+
+    const { actor } = requestContextExtractor.getActor(req);
+    dualDbAuditManager.logPageEvent(actor, {
+      tipoEvento: 'EXPORT',
+      modulo: 'Auditoría y Logs',
+      resumen: `Exportación CSV de registros desde db_barberia_logs ejecutada por "${actor.usuario}".`,
+      detalles: { format: 'CSV' },
+      nivel: 'INFO',
+    });
+
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="db_barberia_logs_${new Date().toISOString().slice(0, 10)}.csv"`
+    );
+    res.send(csv);
+  } catch (error: any) {
+    console.error('Error in /api/audit/export:', error?.message || error);
+    res.status(500).json({ error: 'Error al exportar registros de auditoría.' });
+  }
+});
+
+// 6. IA - Chatbot de Atención al Cliente y Consultas de Barbería
 app.post('/api/ai/chat', async (req: Request, res: Response) => {
   try {
     const { message, history, contextData } = req.body || {};
@@ -290,11 +620,20 @@ app.post('/api/ai/chat', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'El mensaje de consulta es obligatorio.' });
     }
 
+    const { actor } = requestContextExtractor.getActor(req);
     const reply = await geminiService.handleChat(
       message.trim(),
       Array.isArray(history) ? history : [],
       contextData
     );
+
+    dualDbAuditManager.logPageEvent(actor, {
+      tipoEvento: 'CHATBOT_QUERY',
+      modulo: 'Chatbot IA',
+      resumen: `Consulta al asistente virtual: "${message.trim().slice(0, 120)}"`,
+      detalles: { pregunta: message.trim().slice(0, 240), respuestaPreview: reply.slice(0, 200) },
+      nivel: 'INFO',
+    });
 
     res.json({ reply });
   } catch (error: any) {
@@ -309,7 +648,7 @@ app.post('/api/ai/chat', async (req: Request, res: Response) => {
   }
 });
 
-// 3. IA - Asesor de Negocio (Analiza métricas y da consejos estratégicos)
+// 7. IA - Asesor de Negocio (Analiza métricas y da consejos estratégicos)
 app.post('/api/ai/advise', async (req: Request, res: Response) => {
   try {
     const { metrics } = req.body;
@@ -329,7 +668,7 @@ app.post('/api/ai/advise', async (req: Request, res: Response) => {
   }
 });
 
-// 4. IA - Predicción de Demanda de Agenda Inteligente
+// 8. IA - Predicción de Demanda de Agenda Inteligente
 app.post('/api/ai/predict', async (req: Request, res: Response) => {
   try {
     const { dateStr, currentBookingsCount } = req.body;

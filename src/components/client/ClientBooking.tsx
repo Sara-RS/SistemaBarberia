@@ -6,7 +6,7 @@
 import React from 'react';
 import { BaseAppComponent } from '../../context/AppContext';
 import { scheduleEngine } from '../../services/scheduleEngine';
-import { CurrencyFormatter, DateTimeHelper, WhatsAppUrlBuilder } from '../../utils/helpers';
+import { CurrencyFormatter, DateTimeHelper } from '../../utils/helpers';
 import {
   Sparkles,
   Calendar,
@@ -21,7 +21,6 @@ import {
   Mail,
   Smile,
   MapPin,
-  MessageSquare,
 } from 'lucide-react';
 
 interface ClientBookingState {
@@ -633,18 +632,6 @@ export class ClientBooking extends BaseAppComponent<{}, ClientBookingState> {
               </div>
 
               <div className="flex flex-col sm:flex-row gap-3 justify-center pt-2">
-                <a
-                  href={WhatsAppUrlBuilder.buildApiUrl(
-                    phone,
-                    `¡Hola, ${`${firstName} ${lastName}`.trim()}! Te saludamos de Barbería Josué 🇧🇴\n\nConfirmamos tu cita agendada:\n✂️ *Servicio:* ${activeService?.name}\n💈 *Barbero:* ${activeEmployee?.fullName}\n📅 *Fecha:* ${DateTimeHelper.formatLegible(createdApt.date)}\n⏰ *Hora:* ${createdApt.startTime} a ${createdApt.endTime}\n\n📍 *Sucursal:* ${activeBranch?.name}\n🏠 *Dirección:* ${activeBranch?.address}\n\n¡Gracias por tu preferencia! Te esperamos.`
-                  )}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg flex items-center justify-center gap-2 transition-all shadow-md cursor-pointer"
-                >
-                  <MessageSquare className="w-4 h-4 stroke-[2]" />
-                  <span>Enviar Aviso por WhatsApp</span>
-                </a>
                 <button
                   onClick={this.handleResetBooking}
                   className="px-5 py-2.5 bg-slate-100 dark:bg-[#12233B] border border-slate-200 dark:border-[#243D63] text-xs font-bold rounded-lg hover:bg-slate-200 dark:hover:bg-[#182E4D] transition-all cursor-pointer text-slate-800 dark:text-slate-100"

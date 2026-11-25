@@ -5,6 +5,7 @@
 
 import { AppContextProps } from '../context/AppContext';
 import { BaseEntity, ModelFactory } from '../models/DomainModels';
+import { authManager } from './authManager';
 
 export type ChatSender = 'user' | 'assistant';
 
@@ -264,6 +265,7 @@ export class ChatbotService {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        ...authManager.getAuthHeaders(),
       },
       body: JSON.stringify({
         message: userMessage,

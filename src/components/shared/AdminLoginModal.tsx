@@ -5,6 +5,7 @@
 
 import React from 'react';
 import { BaseAppComponent } from '../../context/AppContext';
+import { authManager } from '../../services/authManager';
 import {
   Lock,
   User,
@@ -15,6 +16,7 @@ import {
   AlertCircle,
   ShieldCheck,
   LogIn,
+  RefreshCw,
 } from 'lucide-react';
 
 interface AdminLoginModalProps {
@@ -27,11 +29,17 @@ interface AdminLoginModalState {
   username: string;
   password: string;
   showPassword: boolean;
+  captchaId: string;
+  captchaImage: string;
+  captchaAnswer: string;
+  isLoadingCaptcha: boolean;
   errorMsg: string;
+  isSubmitting: boolean;
 }
 
 /**
- * Modal de inicio de sesión OOP (Clase React) para acceder al Panel de Administración.
+ * Modal de inicio de sesión OOP (Clase React) con verificación CAPTCHA integrada
+ * para acceder al Panel de Administración.
  */
 export class AdminLoginModal extends BaseAppComponent<AdminLoginModalProps, AdminLoginModalState> {
   private usernameInputRef = React.createRef<HTMLInputElement>();
@@ -42,7 +50,12 @@ export class AdminLoginModal extends BaseAppComponent<AdminLoginModalProps, Admi
       username: '',
       password: '',
       showPassword: false,
+      captchaId: '',
+      captchaImage: '',
+      captchaAnswer: '',
+      isLoadingCaptcha: false,
       errorMsg: '',
+      isSubmitting: false,
     };
   }
 
@@ -52,31 +65,67 @@ export class AdminLoginModal extends BaseAppComponent<AdminLoginModalProps, Admi
         username: '',
         password: '',
         showPassword: false,
+        captchaAnswer: '',
         errorMsg: '',
+        isSubmitting: false,
       });
+      void this.loadCaptcha();
       window.setTimeout(() => this.usernameInputRef.current?.focus(), 80);
     }
   }
 
-  private handleSubmit = (e: React.FormEvent): void => {
+  private loadCaptcha = async (): Promise<void> => {
+    this.setState({ isLoadingCaptcha: true, captchaAnswer: '' });
+    try {
+      const challenge = await authManager.fetchCaptcha();
+      this.setState({
+        captchaId: challenge.captchaId,
+        captchaImage: challenge.imageDataUrl,
+        isLoadingCaptcha: false,
+      });
+    } catch {
+      this.setState({
+        isLoadingCaptcha: false,
+        errorMsg: 'No se pudo cargar el código CAPTCHA. Intenta recargar.',
+      });
+    }
+  };
+
+  private handleSubmit = async (e: React.FormEvent): Promise<void> => {
     e.preventDefault();
-    const { username, password } = this.state;
-    const result = this.app.loginAdmin(username, password);
+    if (this.state.isSubmitting) return;
+
+    const { username, password, captchaId, captchaAnswer } = this.state;
+    this.setState({ isSubmitting: true, errorMsg: '' });
+
+    const result = await this.app.loginAdmin(username, password, captchaId, captchaAnswer);
 
     if (result.success) {
-      this.setState({ errorMsg: '', password: '' });
+      this.setState({ errorMsg: '', password: '', captchaAnswer: '', isSubmitting: false });
       this.props.onLoginSuccess();
       this.props.onClose();
     } else {
       this.setState({
+        isSubmitting: false,
         errorMsg: result.error || 'Credenciales incorrectas.',
       });
+      // El CAPTCHA es de un solo uso: recargar automáticamente uno nuevo tras cualquier intento fallido
+      void this.loadCaptcha();
     }
   };
 
   public render(): React.ReactNode {
     const { isOpen, onClose } = this.props;
-    const { username, password, showPassword, errorMsg } = this.state;
+    const {
+      username,
+      password,
+      showPassword,
+      captchaImage,
+      captchaAnswer,
+      isLoadingCaptcha,
+      errorMsg,
+      isSubmitting,
+    } = this.state;
     const { companyInfo } = this.app;
 
     if (!isOpen) return null;
@@ -96,7 +145,7 @@ export class AdminLoginModal extends BaseAppComponent<AdminLoginModalProps, Admi
         >
           <div className="h-1.5 bg-navy-800 dark:bg-navy-500 w-full" />
 
-          <div className="p-6 space-y-5">
+          <div className="p-6 space-y-4">
             {/* CABECERA */}
             <div className="flex items-start justify-between gap-3 pb-3 border-b border-slate-100 dark:border-[#1E3354]">
               <div className="flex items-center gap-3">
@@ -134,7 +183,7 @@ export class AdminLoginModal extends BaseAppComponent<AdminLoginModalProps, Admi
             )}
 
             {/* CAMPOS */}
-            <div className="space-y-4">
+            <div className="space-y-3.5">
               <div className="space-y-1.5">
                 <label
                   htmlFor="admin-username"
@@ -187,6 +236,70 @@ export class AdminLoginModal extends BaseAppComponent<AdminLoginModalProps, Admi
                   </button>
                 </div>
               </div>
+
+              {/* VERIFICACIÓN CAPTCHA */}
+              <div className="space-y-2 pt-1">
+                <div className="flex items-center justify-between">
+                  <label
+                    htmlFor="admin-captcha"
+                    className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 block"
+                  >
+                    Verificación CAPTCHA
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => void this.loadCaptcha()}
+                    disabled={isLoadingCaptcha || isSubmitting}
+                    className="text-[11px] font-semibold text-navy-700 dark:text-navy-300 hover:underline inline-flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                  >
+                    <RefreshCw className={`w-3 h-3 ${isLoadingCaptcha ? 'animate-spin' : ''}`} />
+                    <span>Otro código</span>
+                  </button>
+                </div>
+
+                <div className="flex items-center gap-2.5">
+                  <div className="flex-1 h-14 rounded-xl border border-slate-200 dark:border-[#243D63] bg-slate-100 dark:bg-[#12233B] overflow-hidden flex items-center justify-center">
+                    {isLoadingCaptcha || !captchaImage ? (
+                      <div className="w-full h-full animate-pulse bg-slate-200 dark:bg-[#1A3152]" />
+                    ) : (
+                      <img
+                        src={captchaImage}
+                        alt="Código de verificación CAPTCHA"
+                        className="h-full w-full object-contain select-none"
+                      />
+                    )}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => void this.loadCaptcha()}
+                    disabled={isLoadingCaptcha || isSubmitting}
+                    aria-label="Generar nuevo código CAPTCHA"
+                    title="Generar nuevo código"
+                    className="h-14 w-12 shrink-0 rounded-xl border border-slate-200 dark:border-[#243D63] bg-slate-50 dark:bg-[#12233B] hover:bg-slate-100 dark:hover:bg-[#162B47] text-navy-800 dark:text-navy-200 flex items-center justify-center transition-colors cursor-pointer disabled:opacity-50"
+                  >
+                    <RefreshCw className={`w-4 h-4 ${isLoadingCaptcha ? 'animate-spin' : ''}`} />
+                  </button>
+                </div>
+
+                <input
+                  id="admin-captcha"
+                  type="text"
+                  autoComplete="off"
+                  spellCheck={false}
+                  required
+                  maxLength={6}
+                  placeholder="Escribe los 5 caracteres de la imagen"
+                  value={captchaAnswer}
+                  onChange={e =>
+                    this.setState({
+                      captchaAnswer: e.target.value.toUpperCase(),
+                      errorMsg: '',
+                    })
+                  }
+                  className="w-full bg-slate-50 dark:bg-[#12233B] border border-slate-200 dark:border-[#243D63] rounded-xl px-4 py-2.5 text-xs font-mono tracking-widest uppercase text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 placeholder:normal-case placeholder:tracking-normal placeholder:font-sans focus:outline-none focus:border-navy-600 dark:focus:border-navy-400 focus:bg-white dark:focus:bg-[#162B47] transition-all"
+                />
+              </div>
             </div>
 
             {/* ACCIONES */}
@@ -194,16 +307,18 @@ export class AdminLoginModal extends BaseAppComponent<AdminLoginModalProps, Admi
               <button
                 type="button"
                 onClick={onClose}
-                className="w-1/2 py-2.5 px-4 rounded-xl border border-slate-200 dark:border-[#243D63] text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-[#12233B] font-bold text-xs transition-colors cursor-pointer"
+                disabled={isSubmitting}
+                className="w-1/2 py-2.5 px-4 rounded-xl border border-slate-200 dark:border-[#243D63] text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-[#12233B] font-bold text-xs transition-colors cursor-pointer disabled:opacity-60"
               >
                 Cancelar
               </button>
               <button
                 type="submit"
-                className="w-1/2 py-2.5 px-4 rounded-xl bg-navy-800 hover:bg-navy-700 dark:bg-navy-600 dark:hover:bg-navy-500 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-md shadow-navy-900/20 transition-all cursor-pointer active:scale-95"
+                disabled={isSubmitting || isLoadingCaptcha}
+                className="w-1/2 py-2.5 px-4 rounded-xl bg-navy-800 hover:bg-navy-700 dark:bg-navy-600 dark:hover:bg-navy-500 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-md shadow-navy-900/20 transition-all cursor-pointer active:scale-95 disabled:opacity-60"
               >
                 <LogIn className="w-4 h-4" />
-                <span>Iniciar Sesión</span>
+                <span>{isSubmitting ? 'Verificando...' : 'Iniciar Sesión'}</span>
               </button>
             </div>
           </div>

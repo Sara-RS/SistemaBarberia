@@ -32,6 +32,7 @@ import {
   LogIn,
   LogOut,
   Lock,
+  ShieldAlert,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -54,15 +55,16 @@ export class Layout extends BaseAppComponent<LayoutProps, LayoutState> {
   private readonly adminMenuItems = [
     { id: 'dashboard', name: 'Dashboard', icon: TrendingUp },
     { id: 'calendar', name: 'Agenda', icon: Calendar },
-    { id: 'pos', name: 'Caja', icon: DollarSign },
-    { id: 'inventory', name: 'Inventario', icon: Package },
     { id: 'purchases', name: 'Compras', icon: ShoppingCart },
+    { id: 'inventory', name: 'Inventario', icon: Package },
+    { id: 'pos', name: 'Caja', icon: DollarSign },
     { id: 'providers', name: 'Proveedores', icon: Truck },
     { id: 'services', name: 'Servicios', icon: Scissors },
     { id: 'staff', name: 'Barberos', icon: Users },
     { id: 'clients', name: 'Clientes', icon: UserCheck },
     { id: 'reminders', name: 'Recordatorios WhatsApp', icon: MessageSquare },
     { id: 'settings', name: 'Parametrización', icon: Settings },
+    { id: 'audit', name: 'Logs', icon: ShieldAlert },
   ];
 
   private readonly clientMenuItems = [
@@ -108,8 +110,8 @@ export class Layout extends BaseAppComponent<LayoutProps, LayoutState> {
     this.props.setActiveTab(nextRole === 'client' ? 'booking' : 'dashboard');
   };
 
-  private handleLogout = (): void => {
-    this.app.logoutAdmin();
+  private handleLogout = async (): Promise<void> => {
+    await this.app.logoutAdmin();
     this.props.setActiveTab('booking');
     this.setState({ mobileMenuOpen: false, notificationsOpen: false });
   };
@@ -288,7 +290,7 @@ export class Layout extends BaseAppComponent<LayoutProps, LayoutState> {
                   className="w-full py-2.5 px-3 bg-navy-800 hover:bg-navy-700 dark:bg-navy-600 dark:hover:bg-navy-500 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer whitespace-nowrap"
                 >
                   <LogIn className="w-4 h-4 shrink-0" />
-                  <span>Login Administrador</span>
+                  <span>Login</span>
                 </button>
               </div>
             )}

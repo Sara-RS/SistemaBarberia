@@ -493,3 +493,78 @@ export interface DashboardKPIs {
   activeClients: number;
   criticalStockCount: number;
 }
+
+// --- AUDITORÍA Y REGISTRO DE LOGS (db_barberia_logs) ---
+
+export type AuditOperationType =
+  | 'INSERT'
+  | 'UPDATE'
+  | 'DELETE'
+  | 'LOGIN'
+  | 'LOGIN_FAILED'
+  | 'LOGOUT'
+  | 'PAGE_VIEW'
+  | 'CHATBOT_QUERY'
+  | 'THEME_CHANGE'
+  | 'BRANCH_CHANGE'
+  | 'ROLE_SWITCH'
+  | 'EXPORT'
+  | 'SYSTEM';
+
+export type AuditLogLevel = 'INFO' | 'WARNING' | 'CRITICAL';
+
+export interface AuditLogEntry {
+  id: number | string;
+  logUuid: string;
+  fechaHora: string;
+  fechaHoraLocal: string;
+  usuario: string;
+  rolUsuario: RolUsuario | 'system';
+  origen: 'TRIGGER_DB' | 'APLICACION_WEB';
+  baseDatosOrigen: string;
+  baseDatosDestino: string;
+  tablaAfectada: string;
+  operacion: AuditOperationType;
+  registroId: string | null;
+  modulo: string;
+  sucursalId: string | null;
+  resumen: string;
+  datosAnteriores: string | null;
+  datosNuevos: string | null;
+  triggerNombre: string | null;
+  ipOrigen: string | null;
+  userAgent: string | null;
+  nivel: AuditLogLevel;
+  creadoEn: string;
+}
+
+export interface AuditTriggerDefinition {
+  name: string;
+  tableName: string;
+  sql: string;
+}
+
+export interface AuditSummaryData {
+  totalLogs: number;
+  todayLogs: number;
+  triggerLogs: number;
+  criticalOrWarningLogs: number;
+  activeTriggersCount: number;
+  primaryDbName: string;
+  logsDbName: string;
+  activeTriggers: AuditTriggerDefinition[];
+  modulesBreakdown: Array<{ modulo: string; total: number }>;
+  operationsBreakdown: Array<{ operacion: string; total: number }>;
+}
+
+export interface AuditLogFilter {
+  search?: string;
+  modulo?: string;
+  operacion?: string;
+  nivel?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  limit?: number;
+  offset?: number;
+}
+

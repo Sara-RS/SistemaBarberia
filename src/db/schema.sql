@@ -302,3 +302,89 @@ ALTER TABLE ventas ENABLE ROW LEVEL SECURITY;
 CREATE POLICY politica_aislamiento_sucursal ON citas
     FOR ALL
     USING (sucursal_id = (SELECT sucursal_id FROM empleados WHERE usuario_id = auth.uid()));
+
+-- ==========================================================
+-- INTEGRACIÓN CON SEGUNDA BASE DE DATOS: db_barberia_logs
+-- TRIGGERS EN db_barberia QUE REGISTRAN LOGS EN db_barberia_logs
+-- ==========================================================
+
+CREATE EXTENSION IF NOT EXISTS dblink;
+
+-- Tabla auxiliar para registrar eventos de navegación, login/logout y consultas IA
+CREATE TABLE IF NOT EXISTS eventos_pagina (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    tipo_evento VARCHAR(40) NOT NULL,
+    modulo VARCHAR(80) NOT NULL,
+    sucursal_id UUID,
+    resumen TEXT NOT NULL,
+    detalles_json JSONB,
+    nivel VARCHAR(20) DEFAULT 'INFO' NOT NULL,
+    creado_en TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+
+-- Función genérica invocada por los triggers de db_barberia para insertar en db_barberia_logs
+CREATE OR REPLACE FUNCTION fn_auditar_hacia_db_barberia_logs()
+RETURNS TRIGGER AS $$
+DECLARE
+    v_usuario TEXT := COALESCE(NULLIF(current_setting('app.current_user', true), ''), current_user);
+    v_rol TEXT := COALESCE(NULLIF(current_setting('app.current_role', true), ''), 'system');
+    v_ip TEXT := COALESCE(NULLIF(current_setting('app.client_ip', true), ''), '127.0.0.1');
+    v_modulo TEXT := COALESCE(TG_ARGV[0], TG_TABLE_NAME);
+    v_registro_id TEXT;
+    v_datos_old JSONB := NULL;
+    v_datos_new JSONB := NULL;
+    v_sql TEXT;
+BEGIN
+    IF TG_OP = 'INSERT' THEN
+        v_datos_new := to_jsonb(NEW);
+        v_registro_id := COALESCE(v_datos_new->>'id', '');
+    ELSIF TG_OP = 'UPDATE' THEN
+        v_datos_old := to_jsonb(OLD);
+        v_datos_new := to_jsonb(NEW);
+        v_registro_id := COALESCE(v_datos_new->>'id', '');
+    ELSIF TG_OP = 'DELETE' THEN
+        v_datos_old := to_jsonb(OLD);
+        v_registro_id := COALESCE(v_datos_old->>'id', '');
+    END IF;
+
+    v_sql := format(
+        'INSERT INTO audit_logs (fecha_hora_local, usuario, rol_usuario, origen, base_datos_origen, base_datos_destino, tabla_afectada, operacion, registro_id, modulo, resumen, datos_anteriores, datos_nuevos, trigger_nombre, ip_origen, nivel)
+         VALUES (%L, %L, %L, %L, %L, %L, %L, %L, %L, %L, %L, %L::jsonb, %L::jsonb, %L, %L, %L)',
+        to_char(CURRENT_TIMESTAMP AT TIME ZONE 'America/La_Paz', 'DD/MM/YYYY HH24:MI:SS'),
+        v_usuario,
+        v_rol,
+        'TRIGGER_DB',
+        'db_barberia',
+        'db_barberia_logs',
+        TG_TABLE_NAME,
+        TG_OP,
+        v_registro_id,
+        v_modulo,
+        format('Operación %s en %s (ID: %s)', TG_OP, TG_TABLE_NAME, v_registro_id),
+        COALESCE(v_datos_old::text, 'null'),
+        COALESCE(v_datos_new::text, 'null'),
+        TG_NAME,
+        v_ip,
+        CASE WHEN TG_OP = 'DELETE' THEN 'WARNING' ELSE 'INFO' END
+    );
+
+    PERFORM dblink_exec('dbname=db_barberia_logs', v_sql);
+    RETURN COALESCE(NEW, OLD);
+END;
+$$ LANGUAGE plpgsql;
+
+-- Triggers de auditoría automática sobre todas las tablas operativas
+CREATE TRIGGER trg_empresas_audit AFTER INSERT OR UPDATE ON empresas FOR EACH ROW EXECUTE FUNCTION fn_auditar_hacia_db_barberia_logs('Parametrización');
+CREATE TRIGGER trg_empleados_audit AFTER INSERT OR UPDATE OR DELETE ON empleados FOR EACH ROW EXECUTE FUNCTION fn_auditar_hacia_db_barberia_logs('Barberos');
+CREATE TRIGGER trg_servicios_audit AFTER INSERT OR UPDATE ON servicios FOR EACH ROW EXECUTE FUNCTION fn_auditar_hacia_db_barberia_logs('Servicios');
+CREATE TRIGGER trg_clientes_audit AFTER INSERT OR UPDATE ON clientes FOR EACH ROW EXECUTE FUNCTION fn_auditar_hacia_db_barberia_logs('Clientes');
+CREATE TRIGGER trg_citas_audit AFTER INSERT OR UPDATE ON citas FOR EACH ROW EXECUTE FUNCTION fn_auditar_hacia_db_barberia_logs('Agenda');
+CREATE TRIGGER trg_turnos_espera_audit AFTER INSERT OR UPDATE ON turnos_espera FOR EACH ROW EXECUTE FUNCTION fn_auditar_hacia_db_barberia_logs('Agenda');
+CREATE TRIGGER trg_proveedores_audit AFTER INSERT OR UPDATE OR DELETE ON proveedores FOR EACH ROW EXECUTE FUNCTION fn_auditar_hacia_db_barberia_logs('Proveedores');
+CREATE TRIGGER trg_productos_audit AFTER INSERT OR UPDATE OR DELETE ON productos FOR EACH ROW EXECUTE FUNCTION fn_auditar_hacia_db_barberia_logs('Inventario');
+CREATE TRIGGER trg_compras_audit AFTER INSERT OR DELETE ON compras FOR EACH ROW EXECUTE FUNCTION fn_auditar_hacia_db_barberia_logs('Compras');
+CREATE TRIGGER trg_ventas_audit AFTER INSERT ON ventas FOR EACH ROW EXECUTE FUNCTION fn_auditar_hacia_db_barberia_logs('Caja / POS');
+CREATE TRIGGER trg_sesiones_caja_audit AFTER INSERT OR UPDATE ON sesiones_caja FOR EACH ROW EXECUTE FUNCTION fn_auditar_hacia_db_barberia_logs('Caja / POS');
+CREATE TRIGGER trg_movimientos_caja_audit AFTER INSERT ON movimientos_caja FOR EACH ROW EXECUTE FUNCTION fn_auditar_hacia_db_barberia_logs('Caja / POS');
+CREATE TRIGGER trg_eventos_pagina_audit AFTER INSERT ON eventos_pagina FOR EACH ROW EXECUTE FUNCTION fn_auditar_hacia_db_barberia_logs('Eventos Web');
+
